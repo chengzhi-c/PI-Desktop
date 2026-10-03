@@ -165,6 +165,19 @@ side-effect". The schema cannot tell that a navigation will trigger a
 login flow, that an `evaluate` will post a comment, or that a snapshot
 will sign the user in. The plugin author owns that knowledge.
 
+### Let a user MCP server reuse `planSafeActions` as an action enum
+
+Rejected. An MCP `tools/call` has no `action` argument, and there is no
+plugin runtime to reject an unlisted action after the host admits the
+tool. A non-empty list would therefore admit every tool from that
+server. The user instead names raw tool names on the server record
+(`planSafeTools`). The launch path forwards `planSafeActions: [fullName]`
+only for a tool whose raw name is listed, and host-core admits an `mcp_`
+tool only when that list contains the exact tool name of the call. An
+absent or empty list keeps the server out of Plan and Goal. Wildcards
+and a server-wide opt-in are rejected for the same reason a per-tool
+boolean was rejected above: one server mixes read and write tools.
+
 ### Default `summonWindow` to a tray-only affordance
 
 Rejected because the tray icon already summons on click; the request

@@ -62,6 +62,11 @@ export type McpServerRecord = {
   /** http: absolute endpoint; HTTP is allowed for local and LAN servers. */
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Raw MCP tool names allowed in Plan and Goal. Absent or empty keeps every
+   * tool from this server out of those modes.
+   */
+  planSafeTools?: string[];
   enabled: boolean;
   scope?: ActivationScope;
   createdAt: string;
@@ -81,6 +86,11 @@ export type McpServerInput = {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * An array replaces the stored list; an empty array clears it. `null` or
+   * omitting the field keeps the stored list.
+   */
+  planSafeTools?: string[] | null;
   enabled?: boolean;
   scope?: ActivationScope;
 };

@@ -50,6 +50,60 @@ fn config_round_trips_without_activation_fields() {
     assert_eq!(serde_json::from_str::<McpConfig>(&raw).unwrap().id, "files");
 }
 
+/// A file written before plan-safe tools existed has no field. Reading it must
+/// stay an empty allowlist, not a parse error and not an implicit allow-all.
+#[test]
+fn a_legacy_config_reads_as_an_empty_plan_safe_list() {
+    let raw = r#"{
+        "id": "files",
+        "label": "Files",
+        "transport": "stdio",
+        "command": "npx"
+    }"#;
+    let config: McpConfig = serde_json::from_str(raw).unwrap();
+    assert!(config.plan_safe_tools.is_empty());
+}
+
+#[test]
+fn plan_safe_tools_round_trip_and_reject_wildcards() {
+    let dir = tempdir().unwrap();
+    let mut registry = McpServerRegistry::new(dir.path());
+    let mut input = stdio("ctx");
+    input.label = Some("Context".into());
+    input.plan_safe_tools = Some(vec!["search-docs".into(), " get_page ".into()]);
+    let saved = registry.upsert(input).unwrap();
+    assert_eq!(
+        saved.plan_safe_tools,
+        vec!["search-docs".to_string(), "get_page".to_string()]
+    );
+    let raw = fs::read_to_string(saved.path.unwrap()).unwrap();
+    assert!(raw.contains("\"planSafeTools\""));
+    assert!(!raw.contains("get_page "));
+
+    let mut wildcard = stdio("wild");
+    wildcard.plan_safe_tools = Some(vec!["search*".into()]);
+    let error = registry.upsert(wildcard).unwrap_err().to_string();
+    assert!(error.contains("MCP_INVALID"), "{error}");
+
+    let mut too_many = stdio("many");
+    too_many.plan_safe_tools = Some((0..33).map(|index| format!("tool{index}")).collect());
+    assert!(registry.upsert(too_many).is_err());
+
+    let omitted: McpServerInput =
+        serde_json::from_str(r#"{"id":"ctx","transport":"stdio"}"#).unwrap();
+    assert!(omitted.plan_safe_tools.is_none());
+    let cleared: McpServerInput =
+        serde_json::from_str(r#"{"id":"ctx","planSafeTools":[]}"#).unwrap();
+    assert_eq!(cleared.plan_safe_tools.as_deref(), Some([].as_slice()));
+
+    // Absent or null keeps the list already on disk. An empty array clears it.
+    let mut again = stdio("ctx");
+    again.label = Some("Context".into());
+    again.plan_safe_tools = None;
+    let kept = registry.upsert(again).unwrap();
+    assert_eq!(kept.plan_safe_tools, vec!["search-docs", "get_page"]);
+}
+
 #[test]
 fn disabled_project_server_shadows_global_server() {
     let global = McpServerRecord {
@@ -65,6 +119,7 @@ fn disabled_project_server_shadows_global_server() {
         env: BTreeMap::new(),
         url: None,
         headers: BTreeMap::new(),
+        plan_safe_tools: Vec::new(),
         enabled: true,
         scope: ActivationScope::default(),
         created_at: String::new(),

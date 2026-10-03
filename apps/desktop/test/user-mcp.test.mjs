@@ -113,6 +113,21 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
   assert.equal((await rt.toolsForProject(null)).length, 2);
 });
 
+test("planSafeTools marks only the named tools", async (t) => {
+  const dir = stubDir();
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, { planSafeTools: ["lookup"] })]);
+
+  const tools = await rt.toolsForProject("/repo");
+  const byName = Object.fromEntries(tools.map((tool) => [tool.toolName, tool.planSafe]));
+  assert.equal(byName.lookup, true);
+  assert.equal(byName.ping, false);
+  // A server with no list marks nothing, which is the old behavior.
+  rt.setRecords([stubRecord(dir)]);
+  const unmarked = await rt.toolsForProject("/repo");
+  assert.equal(unmarked.every((tool) => tool.planSafe === false), true);
+});
+
 test("refreshing HTTP MCP status detects a server that went offline", async (t) => {
   let online = true;
   let pings = 0;

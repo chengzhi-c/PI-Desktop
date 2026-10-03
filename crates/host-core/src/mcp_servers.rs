@@ -14,6 +14,7 @@ const MAX_SERVERS: usize = 128;
 const MAX_ARGS: usize = 64;
 const MAX_ENV_ENTRIES: usize = 64;
 const MAX_HEADERS: usize = 32;
+const MAX_PLAN_SAFE_TOOLS: usize = 32;
 const MAX_VALUE_BYTES: usize = 4096;
 const MCP_KIND: &str = "mcp";
 
@@ -41,6 +42,11 @@ pub struct McpServerRecord {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
+    /// Raw MCP tool names the user allows in Plan and Goal. Empty denies every
+    /// tool from this server in those modes. Always serialized so a cleared
+    /// list survives config sync instead of being read back as "keep".
+    #[serde(default)]
+    pub plan_safe_tools: Vec<String>,
     pub enabled: bool,
     #[serde(default)]
     pub scope: ActivationScope,
@@ -68,6 +74,8 @@ struct McpConfig {
     url: Option<String>,
     #[serde(default)]
     headers: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    plan_safe_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -84,6 +92,10 @@ pub struct McpServerInput {
     pub env: Option<BTreeMap<String, String>>,
     pub url: Option<String>,
     pub headers: Option<BTreeMap<String, String>>,
+    /// Absent or `null` keeps the list already stored. An array replaces it,
+    /// and an empty array clears it.
+    #[serde(default)]
+    pub plan_safe_tools: Option<Vec<String>>,
     pub enabled: Option<bool>,
     /// Kept for protocol compatibility; capability state is app-local instead.
     #[allow(dead_code)]
@@ -104,6 +116,31 @@ fn valid_id(id: &str) -> bool {
         && id
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// A Plan/Goal allowlist entry is one raw MCP tool name. Wildcards are
+/// rejected because a server mixes read and write tools under one prefix.
+fn valid_plan_safe_tool(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn normalize_plan_safe_tools(tools: &[String]) -> Result<Vec<String>> {
+    if tools.len() > MAX_PLAN_SAFE_TOOLS {
+        bail!("MCP_INVALID: at most {MAX_PLAN_SAFE_TOOLS} planSafeTools");
+    }
+    let mut normalized = Vec::with_capacity(tools.len());
+    for tool in tools {
+        let name = tool.trim();
+        if !valid_plan_safe_tool(name) {
+            bail!("MCP_INVALID: planSafeTools entry \"{tool}\" is not a tool name");
+        }
+        check_len("planSafeTools", name)?;
+        normalized.push(name.to_string());
+    }
+    Ok(normalized)
 }
 
 fn valid_env_key(key: &str) -> bool {
@@ -242,6 +279,7 @@ impl McpServerRegistry {
                 env: config.env,
                 url: config.url,
                 headers: config.headers,
+                plan_safe_tools: config.plan_safe_tools,
                 enabled,
                 scope: scope_for(level, owner_project_path.as_deref()),
                 created_at: updated_at.clone(),
@@ -374,6 +412,15 @@ impl McpServerRegistry {
             }
             _ => bail!("MCP_INVALID: transport must be \"stdio\" or \"http\""),
         }
+        if config.plan_safe_tools.len() > MAX_PLAN_SAFE_TOOLS {
+            bail!("MCP_INVALID: at most {MAX_PLAN_SAFE_TOOLS} planSafeTools");
+        }
+        for name in &config.plan_safe_tools {
+            if !valid_plan_safe_tool(name) {
+                bail!("MCP_INVALID: planSafeTools entry \"{name}\" is not a tool name");
+            }
+            check_len("planSafeTools", name)?;
+        }
         Ok(())
     }
 
@@ -402,6 +449,12 @@ impl McpServerRegistry {
             bail!("MCP_INVALID: a server with this name already exists at this level");
         }
         let previous_same_transport = current.filter(|record| record.transport == transport);
+        let plan_safe_tools = match &input.plan_safe_tools {
+            Some(tools) => normalize_plan_safe_tools(tools)?,
+            None => current
+                .map(|record| record.plan_safe_tools.clone())
+                .unwrap_or_default(),
+        };
         let mut config = McpConfig {
             id: input.id.trim().to_string(),
             label,
@@ -411,6 +464,7 @@ impl McpServerRegistry {
                 .filter(|value| !value.is_empty())
                 .or_else(|| current.and_then(|record| record.description.clone())),
             transport,
+            plan_safe_tools,
             ..Default::default()
         };
         if config.transport == "stdio" {

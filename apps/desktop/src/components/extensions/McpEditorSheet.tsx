@@ -20,6 +20,11 @@ import {
   MCP_STDIO_LAUNCHER_PRESETS,
   mcpStdioLauncherChoice,
 } from "./mcp-stdio-launcher";
+import {
+  missingPlanSafeTools,
+  normalizePlanSafeTools,
+  planSafeToolsError,
+} from "./mcp-plan-safe";
 
 /**
  * Tool names shown beside a test result.
@@ -47,6 +52,7 @@ export type McpDraft = {
   env: KeyValuePair[];
   url: string;
   headers: KeyValuePair[];
+  planSafeTools: string[];
   enabled: boolean;
   scope: ActivationScope;
 };
@@ -62,6 +68,7 @@ export function emptyMcpDraft(): McpDraft {
     env: [],
     url: "",
     headers: [],
+    planSafeTools: [],
     enabled: true,
     scope: GLOBAL_SCOPE,
   };
@@ -78,6 +85,7 @@ export function draftFromRecord(record: McpServerRecord): McpDraft {
     env: recordToPairs(record.env),
     url: record.url ?? "",
     headers: recordToPairs(record.headers),
+    planSafeTools: [...(record.planSafeTools ?? [])],
     enabled: record.enabled,
     scope: resolveScope(record.scope),
   };
@@ -138,6 +146,7 @@ export function draftToInput(
     ...(context?.projectPath ? { projectPath: context.projectPath } : {}),
     label: draft.label.trim() || draft.id.trim(),
     description: draft.description.trim() || undefined,
+    planSafeTools: normalizePlanSafeTools(draft.planSafeTools),
     enabled: draft.enabled,
     scope: draft.scope,
   };
@@ -216,8 +225,13 @@ export function mcpDraftError(draft: McpDraft): string | null {
   } catch {
     return "extensions.mcp.errorUrlShape";
   }
-  if (parsed.protocol === "http:" || parsed.protocol === "https:") return null;
-  return "extensions.mcp.errorUrlScheme";
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return "extensions.mcp.errorUrlScheme";
+  }
+  const planSafe = planSafeToolsError(draft.planSafeTools);
+  if (planSafe === "shape") return "extensions.mcp.errorPlanSafeShape";
+  if (planSafe === "count") return "extensions.mcp.errorPlanSafeCount";
+  return null;
 }
 
 export function McpEditorSheet({
@@ -306,6 +320,14 @@ export function McpEditorSheet({
   );
   const insecureHttp =
     draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
+  const advertised = status?.state === "ready" ? status.toolNames : undefined;
+  const missingPlanSafe = missingPlanSafeTools(draft.planSafeTools, advertised);
+  const togglePlanSafe = (name: string) => {
+    const selected = new Set(draft.planSafeTools);
+    if (selected.has(name)) selected.delete(name);
+    else selected.add(name);
+    set("planSafeTools", [...selected]);
+  };
 
   return portalOverlay(
     <div
@@ -484,6 +506,42 @@ export function McpEditorSheet({
               </div>
             </>
           )}
+
+          <div className="ext-field-group">
+            <div className="ext-field-label">
+              {t("extensions.mcp.planSafe")}
+              <HelpIcon label={t("extensions.mcp.planSafeHint")} />
+            </div>
+            {advertised?.length ? (
+              <div className="ext-plan-safe-tools" role="group" aria-label={t("extensions.mcp.planSafe")}>
+                {advertised.map((name) => (
+                  <label key={name} className="ext-plan-safe-tool">
+                    <input
+                      type="checkbox"
+                      checked={draft.planSafeTools.includes(name)}
+                      onChange={() => togglePlanSafe(name)}
+                    />
+                    <span>{name}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+            <Input
+              value={draft.planSafeTools.join(", ")}
+              placeholder={t("extensions.mcp.planSafePlaceholder")}
+              onChange={(event) =>
+                set(
+                  "planSafeTools",
+                  event.target.value.split(",").map((name) => name.trim()).filter(Boolean),
+                )
+              }
+            />
+            {missingPlanSafe.length ? (
+              <p className="ext-sheet-warning" role="note">
+                {t("extensions.mcp.planSafeMissing", { names: missingPlanSafe.join(", ") })}
+              </p>
+            ) : null}
+          </div>
 
           <Field label={t("extensions.mcp.description")}>
             <Input

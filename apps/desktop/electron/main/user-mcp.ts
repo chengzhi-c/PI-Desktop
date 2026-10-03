@@ -25,6 +25,8 @@ export type UserMcpToolDescriptor = {
   toolName: string;
   description: string;
   schema?: unknown;
+  /** True when the user named this tool for Plan and Goal. */
+  planSafe: boolean;
 };
 
 /** The slice of {@link McpServerClient} this runtime drives. */
@@ -194,6 +196,7 @@ export class UserMcpRuntime {
           toolName: tool.name,
           description: tool.description ?? `${record.label} tool "${tool.name}" (MCP)`,
           schema: tool.inputSchema,
+          planSafe: (record.planSafeTools ?? []).includes(tool.name),
         });
       }
     });
@@ -336,6 +339,7 @@ export class UserMcpRuntime {
             toolName: tool.name,
             description: tool.description ?? tool.name,
             schema: tool.inputSchema,
+            planSafe: false,
           };
         }
       }
