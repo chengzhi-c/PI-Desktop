@@ -66,42 +66,47 @@ fn a_legacy_config_reads_as_an_empty_plan_safe_list() {
 
 #[test]
 fn plan_safe_tools_round_trip_and_reject_wildcards() {
+    let home = tempdir().unwrap();
     let dir = tempdir().unwrap();
-    let mut registry = McpServerRegistry::new(dir.path());
-    let mut input = stdio("ctx");
-    input.label = Some("Context".into());
-    input.plan_safe_tools = Some(vec!["search-docs".into(), " get_page ".into()]);
-    let saved = registry.upsert(input).unwrap();
-    assert_eq!(
-        saved.plan_safe_tools,
-        vec!["search-docs".to_string(), "get_page".to_string()]
-    );
-    let raw = fs::read_to_string(saved.path.unwrap()).unwrap();
-    assert!(raw.contains("\"planSafeTools\""));
-    assert!(!raw.contains("get_page "));
+    test_support::with_global_agents(home.path(), || {
+        let mut registry = McpServerRegistry::new(dir.path());
+        let mut input = stdio("ctx");
+        input.label = Some("Context".into());
+        input.plan_safe_tools = Some(vec!["search-docs".into(), " get_page ".into()]);
+        let saved = registry.upsert(input).unwrap();
+        assert_eq!(
+            saved.plan_safe_tools,
+            vec!["search-docs".to_string(), "get_page".to_string()]
+        );
+        let path = std::path::PathBuf::from(saved.path.unwrap());
+        assert!(path.starts_with(home.path()), "{}", path.display());
+        let raw = fs::read_to_string(path).unwrap();
+        assert!(raw.contains("\"planSafeTools\""));
+        assert!(!raw.contains("get_page "));
 
-    let mut wildcard = stdio("wild");
-    wildcard.plan_safe_tools = Some(vec!["search*".into()]);
-    let error = registry.upsert(wildcard).unwrap_err().to_string();
-    assert!(error.contains("MCP_INVALID"), "{error}");
+        let mut wildcard = stdio("wild");
+        wildcard.plan_safe_tools = Some(vec!["search*".into()]);
+        let error = registry.upsert(wildcard).unwrap_err().to_string();
+        assert!(error.contains("MCP_INVALID"), "{error}");
 
-    let mut too_many = stdio("many");
-    too_many.plan_safe_tools = Some((0..33).map(|index| format!("tool{index}")).collect());
-    assert!(registry.upsert(too_many).is_err());
+        let mut too_many = stdio("many");
+        too_many.plan_safe_tools = Some((0..33).map(|index| format!("tool{index}")).collect());
+        assert!(registry.upsert(too_many).is_err());
 
-    let omitted: McpServerInput =
-        serde_json::from_str(r#"{"id":"ctx","transport":"stdio"}"#).unwrap();
-    assert!(omitted.plan_safe_tools.is_none());
-    let cleared: McpServerInput =
-        serde_json::from_str(r#"{"id":"ctx","planSafeTools":[]}"#).unwrap();
-    assert_eq!(cleared.plan_safe_tools.as_deref(), Some([].as_slice()));
+        let omitted: McpServerInput =
+            serde_json::from_str(r#"{"id":"ctx","transport":"stdio"}"#).unwrap();
+        assert!(omitted.plan_safe_tools.is_none());
+        let cleared: McpServerInput =
+            serde_json::from_str(r#"{"id":"ctx","planSafeTools":[]}"#).unwrap();
+        assert_eq!(cleared.plan_safe_tools.as_deref(), Some([].as_slice()));
 
-    // Absent or null keeps the list already on disk. An empty array clears it.
-    let mut again = stdio("ctx");
-    again.label = Some("Context".into());
-    again.plan_safe_tools = None;
-    let kept = registry.upsert(again).unwrap();
-    assert_eq!(kept.plan_safe_tools, vec!["search-docs", "get_page"]);
+        // Absent or null keeps the list already on disk. An empty array clears it.
+        let mut again = stdio("ctx");
+        again.label = Some("Context".into());
+        again.plan_safe_tools = None;
+        let kept = registry.upsert(again).unwrap();
+        assert_eq!(kept.plan_safe_tools, vec!["search-docs", "get_page"]);
+    });
 }
 
 #[test]

@@ -9261,6 +9261,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| E / Security — User MCP Plan/Goal allowlist | E2E-MCP-plan-safe-tools |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
 | C / F — Hourly task updates | E2E-SCHEDULED-manual-to-hourly |

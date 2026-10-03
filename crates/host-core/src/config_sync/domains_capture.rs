@@ -822,13 +822,18 @@ pub(crate) fn capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent_capabilities::test_support;
     use crate::mcp_servers::{McpServerInput, McpServerRegistry};
 
     #[test]
     fn mcp_plan_safe_tools_sync_round_trip_clears_the_target_list() {
+        let source_home = tempfile::tempdir().unwrap();
+        let target_home = tempfile::tempdir().unwrap();
         let source_dir = tempfile::tempdir().unwrap();
         let target_dir = tempfile::tempdir().unwrap();
-        let mut source = AppState::open(source_dir.path()).unwrap();
+        let mut source = test_support::with_global_agents(source_home.path(), || {
+            AppState::open(source_dir.path()).unwrap()
+        });
         let mut target = McpServerRegistry::new(target_dir.path());
         let input = |names: Value| {
             serde_json::from_value::<McpServerInput>(json!({
@@ -836,31 +841,46 @@ mod tests {
             }))
             .unwrap()
         };
-        target.upsert(input(json!(["old_tool"]))).unwrap();
+        test_support::with_global_agents(target_home.path(), || {
+            target.upsert(input(json!(["old_tool"]))).unwrap();
+        });
+        let mut previous_names = json!(["old_tool"]);
         for names in [json!(["search-docs"]), json!([])] {
-            source.mcp_servers.upsert(input(names.clone())).unwrap();
-            let captured = capture_mcp(
-                &mut source,
-                &CategorySelection::default(),
-                false,
-                &ProjectIdentityOverrides::default(),
-            )
-            .unwrap();
-            let captured = captured
-                .iter()
+            let captured = test_support::with_global_agents(source_home.path(), || {
+                source.mcp_servers.upsert(input(names.clone())).unwrap();
+                capture_mcp(
+                    &mut source,
+                    &CategorySelection::default(),
+                    false,
+                    &ProjectIdentityOverrides::default(),
+                )
+                .unwrap()
+                .into_iter()
                 .find(|entity| entity.payload.get("id").and_then(Value::as_str) == Some("ctx"))
-                .unwrap();
-            let wire = serde_json::to_vec(captured).unwrap();
+                .unwrap()
+            });
+            let wire = serde_json::to_vec(&captured).unwrap();
             let received: PortableEntity = serde_json::from_slice(&wire).unwrap();
             assert_eq!(received.payload.get("planSafeTools"), Some(&names));
-            // The apply path deserializes this payload as a partial input.
-            let incoming: McpServerInput = serde_json::from_value(received.payload).unwrap();
-            assert!(incoming.plan_safe_tools.is_some());
-            let saved = target.upsert(incoming).unwrap();
-            assert_eq!(serde_json::to_value(saved.plan_safe_tools).unwrap(), names);
+            test_support::with_global_agents(target_home.path(), || {
+                let before = target.list(CapabilityLevel::Global, None).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&before[0].plan_safe_tools).unwrap(),
+                    previous_names
+                );
+                // The apply path deserializes this payload as a partial input.
+                let incoming: McpServerInput = serde_json::from_value(received.payload).unwrap();
+                assert!(incoming.plan_safe_tools.is_some());
+                let saved = target.upsert(incoming).unwrap();
+                assert_eq!(serde_json::to_value(saved.plan_safe_tools).unwrap(), names);
+                let mut reopened = McpServerRegistry::new(target_dir.path());
+                let records = reopened.list(CapabilityLevel::Global, None).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&records[0].plan_safe_tools).unwrap(),
+                    names
+                );
+            });
+            previous_names = names;
         }
-        let mut reopened = McpServerRegistry::new(target_dir.path());
-        let records = reopened.list(CapabilityLevel::Global, None).unwrap();
-        assert!(records[0].plan_safe_tools.is_empty());
     }
 }

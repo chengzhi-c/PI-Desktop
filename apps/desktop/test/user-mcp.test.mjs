@@ -4,6 +4,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { IPC } from "@pi-desktop/shared";
+import { registerMcpIpc } from "../electron/main/ipc/mcp-ipc.ts";
 import { UserMcpRuntime, configurationChanged } from "../electron/main/user-mcp.ts";
 import { McpServerClient } from "../electron/main/plugin-mcp.ts";
 
@@ -576,22 +578,49 @@ test("hyphenated raw names are marked before full-name conversion and dispatched
   assert.equal(result.content[0].text, "untagged:search-docs");
 });
 
-test("changing planSafeTools updates the next tool list without reconnecting", async (t) => {
+test("saving planSafeTools through IPC updates the next tool list without reconnecting", async (t) => {
   const dir = stubDir();
   const pidFile = join(dir, "pid");
   const rt = runtime(t);
-  const record = stubRecord(dir, { env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  let record = stubRecord(dir, { env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  const handlers = new Map();
+  registerMcpIpc({
+    registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
+    getHost: () => ({
+      call: async (method, payload) => {
+        if (method === "mcp.list") return { servers: [record] };
+        assert.equal(method, "mcp.upsert");
+        record = { ...record, ...payload.server };
+        return { server: record };
+      },
+    }),
+    userMcp: rt,
+    currentWorkspacePath: () => "/repo",
+    refreshUserMcp: async () => { rt.setRecords([record]); return [record]; },
+    describeError: String,
+    sendToRenderer: () => {},
+    searchMcpMarket: async () => ({ entries: [] }),
+  });
+  const save = handlers.get(IPC.invoke.mcpUpsert);
   rt.setRecords([record]);
   const before = await rt.toolsForProject("/repo");
   const pid = readFileSync(pidFile, "utf8");
   assert.equal(before.find((tool) => tool.toolName === "lookup")?.planSafe, true);
-  assert.equal(configurationChanged(record, { ...record, planSafeTools: ["ping"] }), false);
-  rt.setRecords([{ ...record, planSafeTools: ["ping"] }]);
+  await save({ id: record.id, planSafeTools: ["ping"] });
   const after = await rt.toolsForProject("/repo");
   assert.equal(after.find((tool) => tool.toolName === "lookup")?.planSafe, false);
   assert.equal(after.find((tool) => tool.toolName === "ping")?.planSafe, true);
   assert.equal(readFileSync(pidFile, "utf8"), pid);
-  rt.setRecords([{ ...record, planSafeTools: [] }]);
+  assert.equal((await rt.callTool("mcp_stub_ping", {}, "/repo")).content[0].text, "untagged:ping");
+  await save({ id: record.id, planSafeTools: [] });
   assert.equal((await rt.toolsForProject("/repo")).every((tool) => !tool.planSafe), true);
   assert.equal(readFileSync(pidFile, "utf8"), pid);
+
+  await save({ id: record.id, env: { ...record.env, STUB_TAG: "edited" } });
+  assert.equal((await rt.callTool("mcp_stub_lookup", {}, "/repo")).content[0].text, "edited:lookup");
+  const editedPid = readFileSync(pidFile, "utf8");
+  assert.notEqual(editedPid, pid);
+  const tested = await handlers.get(IPC.invoke.mcpTest)({ id: record.id });
+  assert.equal(tested.status.state, "ready");
+  assert.notEqual(readFileSync(pidFile, "utf8"), editedPid);
 });
