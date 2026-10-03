@@ -120,7 +120,7 @@ process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
 - Plan and Goal modes can inspect external resources through any plugin
   whose author opts in. The bundled Browser plugin is the first
-  beneficiary; MCP tools can do the same with the same declaration.
+  beneficiary; user MCP tools use a user-selected per-tool list instead.
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.
@@ -169,14 +169,15 @@ will sign the user in. The plugin author owns that knowledge.
 
 Rejected. An MCP `tools/call` has no `action` argument, and there is no
 plugin runtime to reject an unlisted action after the host admits the
-tool. A non-empty list would therefore admit every tool from that
-server. The user instead names raw tool names on the server record
-(`planSafeTools`). The launch path forwards `planSafeActions: [fullName]`
-only for a tool whose raw name is listed, and host-core admits an `mcp_`
-tool only when that list contains the exact tool name of the call. An
-absent or empty list keeps the server out of Plan and Goal. Wildcards
-and a server-wide opt-in are rejected for the same reason a per-tool
-boolean was rejected above: one server mixes read and write tools.
+tool. A non-empty list alone would therefore admit an unlisted sibling
+tool. The user instead names raw tool names on the server record
+(`planSafeTools`). The launch path attaches `planSafeActions: [fullName]`
+only to a tool whose raw name is listed, and the agent runtime forwards
+that list in `tools.execute`. Host-core admits an `mcp_` tool only when
+the list contains the exact full tool name of the call. An absent or
+empty list keeps the server out of Plan and Goal. Wildcards and a
+server-wide opt-in are rejected because one server mixes read and write
+tools. Admission does not lower the MCP tool's `medium` risk.
 
 ### Default `summonWindow` to a tray-only affordance
 

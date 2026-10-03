@@ -39,7 +39,7 @@ function handle(msg) {
       jsonrpc: "2.0",
       id: msg.id,
       result: {
-        tools: [{ name: "lookup", description: "Look something up" }, { name: "ping" }],
+        tools: [{ name: process.env.STUB_TOOL_NAME ?? "lookup", description: "Look something up" }, { name: "ping" }],
         // A server that keeps handing back the same cursor can never be listed
         // to its last page, so the client has to refuse it.
         ...(process.env.STUB_REPEAT_CURSOR ? { nextCursor: "more" } : {}),
@@ -559,4 +559,39 @@ test("a server whose catalog cannot be listed lands as failed with the reason", 
   // A server that already failed this run is not handshaken again per session.
   assert.deepEqual(await rt.toolsForProject("/repo"), []);
   assert.equal(rt.statusFor("stub").state, "failed");
+});
+
+test("hyphenated raw names are marked before full-name conversion and dispatched unchanged", async (t) => {
+  const dir = stubDir();
+  const rt = runtime(t);
+  rt.setRecords([stubRecord(dir, {
+    id: "ctx-docs", env: { STUB_TOOL_NAME: "search-docs" }, planSafeTools: ["search-docs"],
+  })]);
+  const tools = await rt.toolsForProject("/repo");
+  const search = tools.find((tool) => tool.toolName === "search-docs");
+  assert.equal(search?.planSafe, true);
+  assert.equal(search?.fullName, "mcp_ctx_docs_search_docs");
+  assert.equal(tools.find((tool) => tool.toolName === "ping")?.planSafe, false);
+  const result = await rt.callTool(search.fullName, {}, "/repo");
+  assert.equal(result.content[0].text, "untagged:search-docs");
+});
+
+test("changing planSafeTools updates the next tool list without reconnecting", async (t) => {
+  const dir = stubDir();
+  const pidFile = join(dir, "pid");
+  const rt = runtime(t);
+  const record = stubRecord(dir, { env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  rt.setRecords([record]);
+  const before = await rt.toolsForProject("/repo");
+  const pid = readFileSync(pidFile, "utf8");
+  assert.equal(before.find((tool) => tool.toolName === "lookup")?.planSafe, true);
+  assert.equal(configurationChanged(record, { ...record, planSafeTools: ["ping"] }), false);
+  rt.setRecords([{ ...record, planSafeTools: ["ping"] }]);
+  const after = await rt.toolsForProject("/repo");
+  assert.equal(after.find((tool) => tool.toolName === "lookup")?.planSafe, false);
+  assert.equal(after.find((tool) => tool.toolName === "ping")?.planSafe, true);
+  assert.equal(readFileSync(pidFile, "utf8"), pid);
+  rt.setRecords([{ ...record, planSafeTools: [] }]);
+  assert.equal((await rt.toolsForProject("/repo")).every((tool) => !tool.planSafe), true);
+  assert.equal(readFileSync(pidFile, "utf8"), pid);
 });

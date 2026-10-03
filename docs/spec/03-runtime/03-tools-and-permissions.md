@@ -8,11 +8,12 @@
 | Topic | Decision |
 |---|---|
 | Default mode | Agent |
-| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools |
-| Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
-| Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
+| Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin and user MCP tools |
+| Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions + user MCP tools selected by `planSafeTools` |
+| Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions + user MCP tools selected by `planSafeTools` |
+| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / MCP tools without their exact full name in `planSafeActions` / unknown tools / the other kind's submit tool |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
+| User MCP `planSafeTools` | Raw tool names on a server record; session launch marks only listed tools, runtime forwards `[fullName]`, host requires exact membership for the current call; risk stays `medium` (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
@@ -406,8 +407,35 @@ self-declared by an MCP server is not trusted, unlike the risk in a plugin
 manifest the user accepted. Under `ask` and `accept-edits` an MCP tool call
 shows an approval card with reason "MCP server tool requires approval"; an
 `allow-session` grant suppresses further prompts for that tool name in that
-session (grants are in-memory only). `auto` auto-allows it, and the Plan/Goal
-contract-mode hard deny still applies (D640, ADR `mcp-tool-approval-risk`).
+session (grants are in-memory only). `auto` auto-allows an admitted tool. In
+Plan/Goal, tools not selected by the user's per-tool allowlist remain hidden
+and host-denied regardless of permission mode or session grants (D640,
+ADR `mcp-tool-approval-risk`, ADR 0211).
+
+### User MCP tools in Plan and Goal
+
+A server record's `planSafeTools` stores raw names from MCP `tools/list`.
+Only those tools receive `planSafeActions: [fullName]` at session launch,
+which the agent runtime forwards in `tools.execute`. Host-core admits an
+`mcp_` call only if that list contains the current full tool name exactly;
+a sibling name or a wildcard does not admit it. `userMcpToolName` performs
+name conversion once: `ctx-docs` / `search-docs` becomes
+`mcp_ctx_docs_search_docs`; MCP dispatch still sends raw `search-docs`.
+Admission never lowers risk: `ask` and `accept-edits` still confirm,
+`auto` allows, and Agent behavior and plugin action checks are unchanged.
+
+The host and editor each trim entries and validate at most 32 names using
+`[A-Za-z0-9_-]` only. Manual comma entry and discovered-tool checkboxes edit
+one list; a successful discovery warns about unadvertised names without
+blocking save. Invalid names or excessive counts disable save for both
+stdio and HTTP. Missing or null input preserves the stored list; an array
+replaces it, with `[]` clearing it. Record serialization always includes
+`planSafeTools`, including `[]`, so configuration sync propagates clearing.
+
+Editing only the list does not reconnect an MCP server. A new session or
+runtime rebuild reads the updated list, but an already-running or reused
+runtime may keep its old tool metadata until reload or rebuild. There is
+no hot-update guarantee, and subagent MCP selection is outside this policy.
 
 ### Decision Types
 
@@ -443,8 +471,9 @@ Rules:
 - The session value is stored in `sessions.permission_mode`
   (`inherit | ask | accept-edits | auto`, default `inherit`, schema v5) and
   set via `session.configure` `permissionMode`.
-- Plan's hard deny wins over every permission mode for Write/Edit and plugin
-  tools that lack `planSafeActions`. `auto` cannot re-enable a hidden or denied tool.
+- Plan/Goal hard deny wins over every permission mode for Write/Edit, plugin
+  tools that lack `planSafeActions`, and MCP tools whose full name is not in
+  that list. `auto` cannot re-enable a hidden or denied tool.
 - Low-risk tools (`Read`/`Glob`/`Grep`) inside the session roots auto-allow in
   every mode, as before.
 - `BrowserPreview` is an explicit read-only UI inspection capability and is
@@ -521,6 +550,9 @@ for the current key-log policy.
 ### Notes
 - Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
   call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
+- User MCP tools follow the `medium` permission policy in Agent. Plan/Goal
+  admit only individually selected tools with exact full-name membership;
+  all other MCP calls are denied before permission UI.
 - Agent mode uses permission cards or the selected automatic policy for
   Write/Edit/Bash and registered plugin tools.
 - Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
@@ -625,7 +657,6 @@ Naming:
 
 ## 12. Future Extensions
 
-- MCP tools
 - tool group toggles
 - command allowlist / denylist
 - dry-run mode

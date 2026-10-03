@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, Checkbox, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -215,18 +215,18 @@ export function mcpDraftError(draft: McpDraft): string | null {
   if (draft.transport === "stdio") {
     if (!draft.command.trim()) return "extensions.mcp.errorCommand";
     if (draft.command.includes("..")) return "extensions.mcp.errorCommandDots";
-    return null;
-  }
-  const url = draft.url.trim();
-  if (!url) return "extensions.mcp.errorUrl";
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "extensions.mcp.errorUrlShape";
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return "extensions.mcp.errorUrlScheme";
+  } else {
+    const url = draft.url.trim();
+    if (!url) return "extensions.mcp.errorUrl";
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return "extensions.mcp.errorUrlShape";
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "extensions.mcp.errorUrlScheme";
+    }
   }
   const planSafe = planSafeToolsError(draft.planSafeTools);
   if (planSafe === "shape") return "extensions.mcp.errorPlanSafeShape";
@@ -321,9 +321,10 @@ export function McpEditorSheet({
   const insecureHttp =
     draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
   const advertised = status?.state === "ready" ? status.toolNames : undefined;
-  const missingPlanSafe = missingPlanSafeTools(draft.planSafeTools, advertised);
+  const selectedPlanSafe = draft.planSafeTools.filter(Boolean);
+  const missingPlanSafe = missingPlanSafeTools(selectedPlanSafe, advertised);
   const togglePlanSafe = (name: string) => {
-    const selected = new Set(draft.planSafeTools);
+    const selected = new Set(selectedPlanSafe);
     if (selected.has(name)) selected.delete(name);
     else selected.add(name);
     set("planSafeTools", [...selected]);
@@ -508,34 +509,29 @@ export function McpEditorSheet({
           )}
 
           <div className="ext-field-group">
-            <div className="ext-field-label">
-              {t("extensions.mcp.planSafe")}
-              <HelpIcon label={t("extensions.mcp.planSafeHint")} />
-            </div>
+            <Field label={t("extensions.mcp.planSafe")} hint={t("extensions.mcp.planSafeHint")}>
+              <Input
+                value={draft.planSafeTools.join(", ")}
+                placeholder={t("extensions.mcp.planSafePlaceholder")}
+                onChange={(event) => {
+                  // Keep blank segments so a typed comma survives the next render.
+                  set("planSafeTools", event.target.value.split(",").map((name) => name.trim()));
+                }}
+              />
+            </Field>
             {advertised?.length ? (
               <div className="ext-plan-safe-tools" role="group" aria-label={t("extensions.mcp.planSafe")}>
                 {advertised.map((name) => (
-                  <label key={name} className="ext-plan-safe-tool">
-                    <input
-                      type="checkbox"
-                      checked={draft.planSafeTools.includes(name)}
-                      onChange={() => togglePlanSafe(name)}
-                    />
-                    <span>{name}</span>
-                  </label>
+                  <Checkbox
+                    key={name}
+                    className="ext-plan-safe-tool"
+                    label={name}
+                    checked={selectedPlanSafe.includes(name)}
+                    onChange={() => togglePlanSafe(name)}
+                  />
                 ))}
               </div>
             ) : null}
-            <Input
-              value={draft.planSafeTools.join(", ")}
-              placeholder={t("extensions.mcp.planSafePlaceholder")}
-              onChange={(event) =>
-                set(
-                  "planSafeTools",
-                  event.target.value.split(",").map((name) => name.trim()).filter(Boolean),
-                )
-              }
-            />
             {missingPlanSafe.length ? (
               <p className="ext-sheet-warning" role="note">
                 {t("extensions.mcp.planSafeMissing", { names: missingPlanSafe.join(", ") })}

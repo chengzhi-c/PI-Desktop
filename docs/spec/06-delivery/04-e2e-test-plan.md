@@ -3322,7 +3322,7 @@ identify the platform validation still needed.
 #### E2E-MCP-tool-requires-approval: User MCP tools prompt under ask and accept-edits
 
 - **Preconditions**: A project-bound Agent session; one user-configured stdio
-  MCP server whose tool list annotates a tool as read-only/low risk.
+  MCP server with an empty `planSafeTools` list whose tool list annotates a tool as read-only/low risk.
 - **Steps**: 1) With the session in `ask`, ask the agent to call the MCP tool.
   2) Answer the card with allow-once, call it again, then answer with
   allow-session and call it a third time. 3) Switch to `accept-edits` in a new
@@ -3340,6 +3340,36 @@ identify the platform validation still needed.
 - **Acceptance**: E (tools & permissions) + Security
 - **Status**: Unit-covered (host-core `permissions.rs` MCP risk and mode tests);
   desktop journey Draft
+
+#### E2E-MCP-plan-safe-tools: Only named user MCP tools are admitted in Plan and Goal (issue #1112)
+
+- **Preconditions**: A project-bound session and a user MCP server `ctx-docs`
+  advertising `search-docs` and `ping`; test both stdio and HTTP editors.
+- **Steps**: 1) Before discovery, type `unseen,search-docs,` one character at
+  a time and save. Test the connection, select/unselect `ping`, and inspect
+  both the manual input and saved list. 2) Try `search*` and 33 names.
+  3) With only `search-docs` selected, start fresh Plan and Goal sessions;
+  call the selected tool under `ask`, then `auto`. Try the unselected tool
+  and a direct host call whose list contains only a sibling full name.
+  4) Edit the list while connected, create a new session or rebuild the
+  runtime, then clear it and sync the record to another device that had a
+  non-empty list. 5) Check the same MCP tools in Agent mode.
+- **Expected**: Commas survive incremental typing, manual and checkbox
+  changes preserve one list, and `unseen` warns only after discovery without
+  blocking save. Invalid names and counts disable save with the specific
+  Plan-safe shape/count errors. Only `search-docs` is visible in Plan/Goal;
+  RPC carries `["mcp_ctx_docs_search_docs"]` and dispatch uses raw
+  `search-docs`. `ask` still confirms at `medium` risk and `auto` allows;
+  sibling lists and wildcards are denied. Whitelist edits retain the live
+  connection; fresh sessions/rebuilt runtimes use the new list, while a
+  reused runtime may require reload. Sync carries `planSafeTools: []` and
+  clears the receiving list. Agent and plugin admission remain unchanged.
+- **Specs linked**: `03-runtime/03-tools-and-permissions.md`, ADR 0211
+- **Acceptance**: E (tools & permissions) + Security
+- **Status**: Unit/integration-covered (`permissions.rs`, `mcp_servers.rs`,
+  configuration capture round-trip, `user-mcp.test.mjs`,
+  `mcp-plan-safe.test.mjs`, and `agent-runtime/src/runtime.test.ts`);
+  desktop journey Draft (not run)
 
 #### E2E-024L: Resident plugin service is supervised and visible
 
