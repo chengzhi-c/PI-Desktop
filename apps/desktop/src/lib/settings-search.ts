@@ -103,6 +103,8 @@ export const SETTINGS_NAV: SettingsNavEntry[] = [
       "settings.permissionModeAsk",
       "settings.permissionModeAcceptEdits",
       "settings.permissionModeAuto",
+      "settings.allowMcpInPlanGoal",
+      "settings.allowMcpInPlanGoalDesc",
       "settings.defaultsTitle",
       "settings.imageModel",
       "settings.mode",

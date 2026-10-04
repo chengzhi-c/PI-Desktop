@@ -1293,6 +1293,8 @@ sklm: {
     themeSearchPlaceholder: "搜索主题…",
     permissionMode: "权限模式",
     permissionModeDesc: "工具操作的默认审批方式。自动模式会在不询问的情况下运行命令，并可能修改文件。单个会话里仍可临时调整。",
+    allowMcpInPlanGoal: "允许 Plan 和 Goal 调用 MCP",
+    allowMcpInPlanGoalDesc: "允许调用所有已启用的用户 MCP 工具，包括可能修改数据的工具。仍遵循审批规则。关闭时使用各服务器的工具名单；新建会话或重建运行时后生效。",
     permissionModeAsk: "每次询问",
     permissionModeAcceptEdits: "自动接受编辑",
     permissionModeAuto: "全自动",

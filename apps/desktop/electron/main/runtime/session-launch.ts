@@ -670,7 +670,9 @@ export function createSessionLaunchRuntime({
             // The list holds this tool's own full name, which is what
             // host-core matches. A non-empty list for another tool would
             // not admit this one (ADR 0211).
-            ...(tool.planSafe ? { planSafeActions: [tool.fullName] } : {}),
+            ...(settings.allowMcpInPlanGoal === true || tool.planSafe
+              ? { planSafeActions: [tool.fullName] }
+              : {}),
           })),
         ],
         // Plugin skills (D174): only the catalog crosses to the sidecar; the

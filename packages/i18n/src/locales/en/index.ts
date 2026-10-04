@@ -1324,6 +1324,8 @@ sklm: {
     themeSearchPlaceholder: "Search themes…",
     permissionMode: "Permission mode",
     permissionModeDesc: "How tool actions are approved by default. Auto runs commands without asking and may change files. You can still change this per session.",
+    allowMcpInPlanGoal: "Allow MCP in Plan and Goal",
+    allowMcpInPlanGoalDesc: "Allow all active user MCP tools, even if they change data. Approval rules still apply. Off uses each server’s tool list. Takes effect in new or rebuilt sessions.",
     permissionModeAsk: "Ask every time",
     permissionModeAcceptEdits: "Auto-accept edits",
     permissionModeAuto: "Full auto",

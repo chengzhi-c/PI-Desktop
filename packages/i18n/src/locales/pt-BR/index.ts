@@ -1271,6 +1271,8 @@ export const ptBR = {
     themeSearchPlaceholder: "Pesquisar temas…",
     permissionMode: "Modo de permissão",
     permissionModeDesc: "Define como as ações das ferramentas são aprovadas por padrão. O modo Automático executa comandos sem pedir confirmação e pode alterar arquivos. Você ainda pode mudar o modo em cada sessão.",
+    allowMcpInPlanGoal: "Permitir MCP em Plan e Goal",
+    allowMcpInPlanGoalDesc: "Permite todas as ferramentas MCP de usuário ativas, mesmo que alterem dados. As regras de aprovação continuam valendo. Desativado, usa a lista de cada servidor. Aplica-se a sessões novas ou recriadas.",
     permissionModeAsk: "Perguntar sempre",
     permissionModeAcceptEdits: "Aceitar edições automaticamente",
     permissionModeAuto: "Totalmente automático",

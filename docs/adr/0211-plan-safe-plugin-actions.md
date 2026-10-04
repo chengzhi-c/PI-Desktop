@@ -120,7 +120,8 @@ process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
 - Plan and Goal modes can inspect external resources through any plugin
   whose author opts in. The bundled Browser plugin is the first
-  beneficiary; user MCP tools use a user-selected per-tool list instead.
+  beneficiary; user MCP tools use a user-selected per-tool list or an
+  explicit global permission instead.
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.
@@ -175,9 +176,14 @@ tool. The user instead names raw tool names on the server record
 only to a tool whose raw name is listed, and the agent runtime forwards
 that list in `tools.execute`. Host-core admits an `mcp_` tool only when
 the list contains the exact full tool name of the call. An absent or
-empty list keeps the server out of Plan and Goal. Wildcards and a
-server-wide opt-in are rejected because one server mixes read and write
-tools. Admission does not lower the MCP tool's `medium` risk.
+empty list keeps the server out of Plan and Goal while the global permission
+is off. Wildcards remain unsupported. A user may explicitly opt in all active
+user MCP tools through Settings → AI → Permissions (`allowMcpInPlanGoal`),
+whose default is off. The control warns that MCP tools may change data; it
+retains the exact-name admission path and the existing approval policy rather
+than trusting a server's safety claims. The setting is local and follows the
+existing new-session/runtime-rebuild snapshot behavior. Admission does not
+lower the MCP tool's `medium` risk or authorize plugin actions.
 
 ### Default `summonWindow` to a tray-only affordance
 

@@ -745,6 +745,8 @@ fn prompt_enhancement_template_error(field: &str, value: &Value) -> Option<Strin
 fn normalize_settings_value(mut value: Value) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.remove("planApprovalPermissionMode");
+        let allow_mcp = object.get("allowMcpInPlanGoal") == Some(&Value::Bool(true));
+        object.insert("allowMcpInPlanGoal".into(), Value::Bool(allow_mcp));
         if object.get("defaultMode").and_then(Value::as_str) == Some("chat") {
             object.insert("defaultMode".into(), Value::String("plan".into()));
         }
@@ -1013,11 +1015,11 @@ fn validate_settings_value(value: &Value) -> Result<(), JsonRpcError> {
             ));
         }
     }
-    if let Some(infinite_retry) = object.get("infiniteProviderRetry") {
-        if !infinite_retry.is_boolean() {
+    for field in ["infiniteProviderRetry", "allowMcpInPlanGoal"] {
+        if object.get(field).is_some_and(|value| !value.is_boolean()) {
             return Err(rpc_err(
                 1002,
-                "infiniteProviderRetry must be a boolean",
+                format!("{field} must be a boolean"),
                 "INVALID_PARAMS",
             ));
         }
@@ -6612,6 +6614,51 @@ mod tests {
         assert!(content.contains("temporary"), "{content}");
         assert_eq!(read.content["tag"].as_str().unwrap().len(), 4);
         assert!(!active_project.join("notes.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn allow_mcp_in_plan_goal_settings_round_trip() {
+        let data_dir = tempfile::tempdir().unwrap();
+        let mut app_state = AppState::open(data_dir.path()).unwrap();
+        app_state.handshook = true;
+        let state = Arc::new(Mutex::new(app_state));
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let settings = handle_request(state.clone(), "settings.get", json!({}), tx.clone())
+            .await
+            .unwrap();
+        assert_eq!(settings["allowMcpInPlanGoal"], false);
+        for enabled in [true, false] {
+            handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "allowMcpInPlanGoal": enabled }),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            let mut reopened = AppState::open(data_dir.path()).unwrap();
+            reopened.handshook = true;
+            let saved = handle_request(
+                Arc::new(Mutex::new(reopened)),
+                "settings.get",
+                json!({}),
+                tx.clone(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(saved["allowMcpInPlanGoal"], enabled);
+        }
+        for invalid in [json!("yes"), json!(null)] {
+            let error = handle_request(
+                state.clone(),
+                "settings.set",
+                json!({ "allowMcpInPlanGoal": invalid }),
+                tx.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error.data.unwrap()["errorCode"], "INVALID_PARAMS");
+        }
     }
 
     #[tokio::test]

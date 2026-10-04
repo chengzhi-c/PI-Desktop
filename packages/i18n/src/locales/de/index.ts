@@ -1306,6 +1306,8 @@ sklm: {
     "themeSearchPlaceholder": "Themen durchsuchen…",
     "permissionMode": "Berechtigungsmodus",
     "permissionModeDesc": "Wie Werkzeugaktionen standardmäßig genehmigt werden. Führt Befehle automatisch ohne Nachfrage aus und ändert möglicherweise Dateien. Sie können dies weiterhin pro Sitzung ändern.",
+    "allowMcpInPlanGoal": "MCP in Plan und Goal erlauben",
+    "allowMcpInPlanGoalDesc": "Erlaubt alle aktiven Benutzer-MCP-Werkzeuge, auch wenn sie Daten ändern. Genehmigungsregeln gelten weiterhin. Aus verwendet die Werkzeugliste jedes Servers. Gilt für neue oder neu erstellte Sitzungen.",
     "permissionModeAsk": "Immer nachfragen",
     "permissionModeAcceptEdits": "Änderungen automatisch akzeptieren",
     "permissionModeAuto": "Vollautomatisch",

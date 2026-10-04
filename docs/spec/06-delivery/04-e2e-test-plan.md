@@ -3341,10 +3341,11 @@ identify the platform validation still needed.
 - **Status**: Unit-covered (host-core `permissions.rs` MCP risk and mode tests);
   desktop journey Draft
 
-#### E2E-MCP-plan-safe-tools: Only named user MCP tools are admitted in Plan and Goal (issue #1112)
+#### E2E-MCP-plan-safe-tools: User MCP Plan/Goal admission follows the permission switch and tool lists (issue #1112)
 
 - **Preconditions**: A project-bound session and a user MCP server `ctx-docs`
   advertising `search-docs` and `ping`; test both stdio and HTTP editors.
+  Start with **Allow MCP in Plan and Goal** off in Settings → AI → Permissions.
 - **Steps**: 1) Before discovery, type `unseen,search-docs,` one character at
   a time and save. Test the connection, select/unselect `ping`, and inspect
   both the manual input and saved list. 2) Try `search*` and 33 names.
@@ -3353,7 +3354,10 @@ identify the platform validation still needed.
   and a direct host call whose list contains only a sibling full name.
   4) Edit the list while connected, create a new session or rebuild the
   runtime, then clear it and sync the record to another device that had a
-  non-empty list. 5) Check the same MCP tools in Agent mode.
+  non-empty list. 5) Check the same MCP tools in Agent mode. 6) Enable the
+  global MCP permission, reopen Settings, and create fresh Plan and Goal
+  sessions. Call the otherwise unlisted `ping` under `ask` and `auto`.
+  Disable the switch and rebuild the runtime; check the per-server list again.
 - **Expected**: Commas survive incremental typing, manual and checkbox
   changes preserve one list, and `unseen` warns only after discovery without
   blocking save. Invalid names and counts disable save with the specific
@@ -3363,13 +3367,23 @@ identify the platform validation still needed.
   sibling lists and wildcards are denied. Whitelist edits retain the live
   connection; fresh sessions/rebuilt runtimes use the new list, while a
   reused runtime may require reload. Sync carries `planSafeTools: []` and
-  clears the receiving list. Agent and plugin admission remain unchanged.
+  clears the receiving list. The global switch persists locally and admits
+  every active user MCP tool with its own full name, including unlisted `ping`;
+  `ask` still requires approval at `medium` risk. Off restores per-server list
+  admission in fresh/rebuilt sessions without reconnecting the server. Agent
+  and plugin admission remain unchanged.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`, ADR 0211
 - **Acceptance**: E (tools & permissions) + Security
 - **Status**: Unit/integration-covered (`permissions.rs`, `mcp_servers.rs`,
   configuration capture round-trip, `user-mcp.test.mjs`,
-  `mcp-plan-safe.test.mjs`, and `agent-runtime/src/runtime.test.ts`);
-  desktop journey Draft (not run)
+  `mcp-plan-safe.test.mjs`, `mcp-permission-settings.test.mjs`, settings
+  round-trips, and `agent-runtime/src/runtime.test.ts`). On 2026-10-04, the
+  isolated task candidate passed the real Settings toggle/save/reload path and
+  fresh Plan/Goal `grok-4.7` calls to an unlisted read-only stdio MCP tool.
+  Each call waited for one `medium`-risk approval; the server-generated random
+  proof matched both the desktop tool result and the model answer. This is
+  focused step-6 evidence, not the complete journey above or latest-main
+  integration; the remaining desktop matrix is Draft (not run).
 
 #### E2E-024L: Resident plugin service is supervised and visible
 

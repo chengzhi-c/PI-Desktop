@@ -1306,6 +1306,8 @@ sklm: {
     "themeSearchPlaceholder": "Buscar temas…",
     "permissionMode": "Modo de permiso",
     "permissionModeDesc": "Cómo se aprueban las acciones de la herramienta de forma predeterminada. Ejecuta automáticamente comandos sin preguntar y puede cambiar archivos. Aún puedes cambiar esto por sesión.",
+    "allowMcpInPlanGoal": "Permitir MCP en Plan y Goal",
+    "allowMcpInPlanGoalDesc": "Permite todas las herramientas MCP de usuario activas, aunque modifiquen datos. Se mantienen las reglas de aprobación. Al desactivarlo se usa la lista de cada servidor. Se aplica a sesiones nuevas o reconstruidas.",
     "permissionModeAsk": "Preguntar cada vez",
     "permissionModeAcceptEdits": "Aceptación automática de ediciones",
     "permissionModeAuto": "Totalmente automático",

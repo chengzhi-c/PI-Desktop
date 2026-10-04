@@ -1306,6 +1306,8 @@ sklm: {
     "themeSearchPlaceholder": "Thèmes de recherche…",
     "permissionMode": "Mode d'autorisation",
     "permissionModeDesc": "Comment les actions de l'outil sont approuvées par défaut. Auto exécute des commandes sans demander et peut modifier les fichiers. Vous pouvez toujours modifier cela par session.",
+    "allowMcpInPlanGoal": "Autoriser MCP dans Plan et Goal",
+    "allowMcpInPlanGoalDesc": "Autorise tous les outils MCP utilisateur actifs, même s’ils modifient des données. Les règles d’approbation restent en vigueur. Désactivé, utilise la liste de chaque serveur. S’applique aux sessions nouvelles ou recréées.",
     "permissionModeAsk": "Demander à chaque fois",
     "permissionModeAcceptEdits": "Accepter automatiquement les modifications",
     "permissionModeAuto": "Entièrement automatique",

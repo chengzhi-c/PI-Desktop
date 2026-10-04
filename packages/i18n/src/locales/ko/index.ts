@@ -1317,6 +1317,8 @@ sklm: {
     themeSearchPlaceholder: "테마 검색…",
     permissionMode: "권한 모드",
     permissionModeDesc: "도구 작업을 기본적으로 승인하는 방식입니다. 자동 모드는 묻지 않고 명령을 실행하며 파일을 변경할 수 있습니다. 세션별로 변경할 수도 있습니다.",
+    allowMcpInPlanGoal: "Plan 및 Goal에서 MCP 허용",
+    allowMcpInPlanGoalDesc: "데이터를 변경할 수 있는 도구를 포함하여 활성 사용자 MCP 도구를 모두 허용합니다. 승인 규칙은 유지됩니다. 끄면 각 서버의 도구 목록을 사용합니다. 새 세션이나 다시 생성된 세션에 적용됩니다.",
     permissionModeAsk: "매번 묻기",
     permissionModeAcceptEdits: "편집 자동 승인",
     permissionModeAuto: "완전 자동",

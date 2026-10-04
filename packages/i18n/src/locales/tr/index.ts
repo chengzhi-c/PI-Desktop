@@ -1307,6 +1307,8 @@ sklm: {
     themeSearchPlaceholder: "Tema ara…",
     permissionMode: "İzin kipi",
     permissionModeDesc: "Araç eylemlerinin varsayılan onay şekli. Otomatik, sormadan komut çalıştırır ve dosyaları değiştirebilir. Oturum başına hâlâ değiştirebilirsiniz.",
+    allowMcpInPlanGoal: "Plan ve Goal modlarında MCP’ye izin ver",
+    allowMcpInPlanGoalDesc: "Verileri değiştirebilenler dahil tüm etkin kullanıcı MCP araçlarına izin verir. Onay kuralları geçerlidir. Kapalıyken her sunucunun araç listesi kullanılır. Yeni veya yeniden oluşturulan oturumlarda geçerli olur.",
     permissionModeAsk: "Her seferinde sor",
     permissionModeAcceptEdits: "Düzenlemeleri otomatik kabul et",
     permissionModeAuto: "Tam otomatik",
