@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 import { IPC } from "@pi-desktop/shared";
 import { registerMcpIpc } from "../electron/main/ipc/mcp-ipc.ts";
-import { UserMcpRuntime, configurationChanged } from "../electron/main/user-mcp.ts";
+import { UserMcpRuntime, configurationChanged, reconnectAuthorizedMcp } from "../electron/main/user-mcp.ts";
 import { McpServerClient } from "../electron/main/plugin-mcp.ts";
 
 /**
@@ -202,6 +202,41 @@ test("an OAuth wait cannot reuse an obsolete server configuration", async (t) =>
   assert.deepEqual(obsolete, []);
   assert.deepEqual(connectedUrls, [saved.url]);
   assert.deepEqual(calledUrls, [saved.url]);
+});
+
+test("authorization completion cannot restore a superseded server", async (t) => {
+  const connectedUrls = [];
+  const rt = runtime(t, {
+    createClient: ({ server }) => {
+      let connected = false;
+      return {
+        connect: async () => { connected = true; connectedUrls.push(server.url); return [{ name: "lookup" }]; },
+        getTools: () => connected ? [{ name: "lookup" }] : [],
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async () => server.url,
+      };
+    },
+  });
+  const captured = stubRecord("/unused", {
+    transport: "http", command: undefined, args: undefined,
+    url: "http://old.invalid/mcp", enabled: true,
+  });
+  for (const current of [undefined, { ...captured, url: "http://new.invalid/mcp", enabled: false }]) {
+    const status = await reconnectAuthorizedMcp(rt, captured, current);
+    assert.equal(status.state, "failed");
+  }
+  assert.deepEqual(connectedUrls, []);
+  assert.deepEqual(rt.listRecords(), []);
+
+  const status = await reconnectAuthorizedMcp(rt, captured, captured);
+  assert.equal(status.state, "ready");
+  assert.deepEqual(connectedUrls, [captured.url]);
+  assert.deepEqual(rt.listRecords(), []);
+  rt.setRecords([captured]);
+  assert.equal((await reconnectAuthorizedMcp(rt, captured, captured)).state, "ready");
+  assert.deepEqual(rt.listRecords().map((item) => item.url), [captured.url]);
+
 });
 
 test("stopping one session cancels only its active MCP call", async (t) => {

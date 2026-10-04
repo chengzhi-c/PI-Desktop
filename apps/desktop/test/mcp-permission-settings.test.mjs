@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { createElement } from "react";
+import { Children, createElement, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
@@ -86,10 +86,15 @@ test("the MCP permission row toggles and saves the same shared Plan/Goal setting
     tree = PlanGoalMcpRow({ settings, saveSettings: async (patch) => { settings = { ...settings, ...patch }; } });
     return tree;
   }
+  function* elements(node) {
+    if (!isValidElement(node)) return;
+    yield node;
+    for (const child of Children.toArray(node.props.children)) yield* elements(child);
+  }
   for (const checked of [false, true, false]) {
     const html = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(Harness)));
-    const toggle = tree.props.children;
-    assert.equal(toggle.type, SettingsToggle);
+    const toggle = [...elements(tree)].find((node) => node.type === SettingsToggle);
+    assert.ok(toggle);
     assert.equal(toggle.props.checked, checked);
     assert.ok(html.includes('role="switch"'));
     assert.ok(html.includes('aria-checked="' + checked + '"'));

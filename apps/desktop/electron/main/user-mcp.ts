@@ -487,3 +487,38 @@ export function configurationChanged(before: McpServerRecord, after: McpServerRe
     JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {})
   );
 }
+
+/**
+ * Reconnect the server only when the saved record is still the one that
+ * started login. A captured record is not a connection to restore.
+ */
+export async function reconnectAuthorizedMcp(
+  userMcp: UserMcpRuntime,
+  captured: McpServerRecord | undefined,
+  current: McpServerRecord | undefined,
+): Promise<McpServerStatus> {
+  const serverId = current?.id ?? captured?.id ?? "";
+  if (
+    !current || current.enabled === false ||
+    (captured && configurationChanged(captured, current))
+  ) {
+    return {
+      serverId,
+      state: "failed",
+      toolCount: 0,
+      message: "mcp server configuration changed",
+      updatedAt: Date.now(),
+    };
+  }
+  const existed = userMcp.listRecords().some((item) => item.id === current.id);
+  if (!existed) userMcp.setRecords([...userMcp.listRecords(), current]);
+  userMcp.invalidate(current.id);
+  try {
+    return await userMcp.test(current.id);
+  } finally {
+    if (!existed) {
+      userMcp.invalidate(current.id);
+      userMcp.setRecords(userMcp.listRecords().filter((item) => item.id !== current.id));
+    }
+  }
+}
