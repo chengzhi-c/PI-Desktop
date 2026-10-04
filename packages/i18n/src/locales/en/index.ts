@@ -2375,7 +2375,7 @@ importConfirm: "Imported extensions run inside the agent process with the same a
       valuePlaceholder: "Value",
       removeRow: "Remove row",
       planSafe: "Plan and Goal tools",
-      planSafeHint: "Only these tools are available in Plan and Goal. Leave empty to keep this server out of those modes.",
+      planSafeHint: "When the global MCP permission is off, only these tools are available in Plan and Goal. Leave empty to allow none.",
       planSafePlaceholder: "search, get-docs",
       planSafeMissing: "Not advertised by the last test: {{names}}",
       description: "Description",

@@ -3,13 +3,7 @@ export const MAX_PLAN_SAFE_TOOLS = 32;
 
 const PLAN_SAFE_TOOL_NAME = /^[A-Za-z0-9_-]+$/;
 
-/**
- * Normalize the allowlist a form is about to save.
- *
- * Trims, drops blanks, and rejects anything that is not one tool name. The
- * host repeats this check; doing it here is what lets the form point at the
- * bad entry before the request leaves.
- */
+/** Validate nonblank draft entries; the host validates persisted input. */
 export function planSafeToolsError(tools: readonly string[]): "shape" | "count" | null {
   let count = 0;
   for (const tool of tools) {

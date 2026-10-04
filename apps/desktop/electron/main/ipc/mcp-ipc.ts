@@ -75,14 +75,15 @@ handle(IPC.invoke.mcpList, async (query: Partial<AgentCapabilityQuery> = {}) => 
     if (!host) throw new Error("host unavailable");
     const previous = userMcp.listRecords().find((record) => record.id === server.id);
     const res = await host.call<{ server: McpServerRecord }>("mcp.upsert", { server });
-    await refreshUserMcp(currentWorkspacePath());
+    const current = (await refreshUserMcp(currentWorkspacePath()))
+      .find((record) => record.id === res.server?.id);
     sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server?.id });
     if (
-      res.server && res.server.enabled !== false &&
-      (!previous || previous.enabled === false || configurationChanged(previous, res.server))
+      current && current.enabled !== false &&
+      (!previous || previous.enabled === false || configurationChanged(previous, current))
     ) {
       void userMcp
-        .test(res.server.id)
+        .test(current.id)
         .then(() => {
           sendToRenderer(IPC.event.pluginChanged, { reason: "mcp", pluginId: res.server.id });
         })

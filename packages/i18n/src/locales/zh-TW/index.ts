@@ -2318,7 +2318,7 @@ sklm: {
       valuePlaceholder: "值",
       removeRow: "刪除這一行",
       planSafe: "規劃與目標可用工具",
-      planSafeHint: "只有這些工具能在規劃和目標模式裡使用。留空則這個伺服器在這兩種模式裡不可用。",
+      planSafeHint: "全域 MCP 權限關閉時，只有清單中的工具能在規劃和目標模式裡使用。留空則不允許此伺服器的工具。",
       planSafePlaceholder: "search, get-docs",
       planSafeMissing: "上次測試沒有發現：{{names}}",
       description: "說明",

@@ -909,6 +909,8 @@ export type PluginToolDef = {
    * modes; host-core enforces the per-action restriction.
    */
   planSafeActions?: readonly string[];
+  /** Raw routing identity captured with this runtime's admission metadata. */
+  mcpTool?: { serverId: string; toolName: string };
 };
 
 export type AgentRuntimeOptions = {
@@ -3245,6 +3247,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
                     );
                     return {
                       ...(toolName.startsWith("plugin_") ? { declaredRisk: def?.risk } : {}),
+                      ...(toolName.startsWith("mcp_") && def?.mcpTool ? { mcpTool: def.mcpTool } : {}),
                       // Host admission uses plugin actions or an exact MCP full name.
                       ...(Array.isArray(def?.planSafeActions) &&
                       def!.planSafeActions.length > 0

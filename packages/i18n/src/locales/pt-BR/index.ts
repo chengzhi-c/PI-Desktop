@@ -2281,7 +2281,7 @@ export const ptBR = {
       valuePlaceholder: "Valor",
       removeRow: "Excluir linha",
       planSafe: "Ferramentas para Plano e Meta",
-      planSafeHint: "Somente estas ferramentas ficam disponíveis em Plano e Meta. Deixe vazio para manter este servidor fora desses modos.",
+      planSafeHint: "Com a permissão global de MCP desativada, somente estas ferramentas ficam disponíveis em Plano e Meta. Deixe vazio para não permitir nenhuma.",
       planSafePlaceholder: "search, get-docs",
       planSafeMissing: "Não anunciadas no último teste: {{names}}",
       description: "Descrição",

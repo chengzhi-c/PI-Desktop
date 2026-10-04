@@ -2355,7 +2355,7 @@ importConfirm: "İçe aktarılan uzantılar ajan sürecinde, ajanın kendi araç
       valuePlaceholder: "Değer",
       removeRow: "Satırı kaldır",
       planSafe: "Plan ve Hedef araçları",
-      planSafeHint: "Plan ve Hedef modlarında yalnızca bu araçlar kullanılabilir. Bu sunucuyu o modların dışında tutmak için boş bırakın.",
+      planSafeHint: "Genel MCP izni kapalıyken Plan ve Hedef modlarında yalnızca bu araçlar kullanılabilir. Hiçbirine izin vermemek için boş bırakın.",
       planSafePlaceholder: "search, get-docs",
       planSafeMissing: "Son testte görünmeyenler: {{names}}",
       description: "Açıklama",

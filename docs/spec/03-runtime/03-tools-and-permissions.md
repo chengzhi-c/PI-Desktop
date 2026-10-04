@@ -419,7 +419,7 @@ Settings → AI → Permissions exposes **Allow MCP in Plan and Goal**, backed b
 `AppSettings.allowMcpInPlanGoal`. Absent and false are off. Enabling it admits
 all active user MCP tools, including tools that may change data; it never
 grants plugin actions or bypasses approval. The setting stays local like the
-default permission mode and is not included in configuration sync.
+default permission mode and is neither exported nor applied by configuration sync.
 
 A server record's `planSafeTools` stores raw names from MCP `tools/list`.
 With the global switch off, only those tools receive
@@ -430,11 +430,17 @@ which the agent runtime forwards in `tools.execute`. Host-core admits an
 a sibling name or a wildcard does not admit it. `userMcpToolName` performs
 name conversion once: `ctx-docs` / `search-docs` becomes
 `mcp_ctx_docs_search_docs`; MCP dispatch still sends raw `search-docs`.
+Discovered names that collide after conversion are neither exposed nor callable,
+including after reconnection. Admission and execution must identify the same raw
+tool and server. Each runtime captures `mcpTool: { serverId, toolName }` with its
+admission metadata and forwards it unchanged through `tools.execute` and
+`plugins.execute`; stale identities remain rejected on subsequent calls, not
+just the first reconnect. Pending OAuth lookups cannot restore superseded configurations.
 Admission never lowers risk: `ask` and `accept-edits` still confirm,
 `auto` allows, and Agent behavior and plugin action checks are unchanged.
 
 The host and editor each trim entries and validate at most 32 names using
-`[A-Za-z0-9_-]` only. Manual comma entry and discovered-tool checkboxes edit
+`[A-Za-z0-9_-]` only. Manual comma entry and discovered-tool selections edit
 one list; a successful discovery warns about unadvertised names without
 blocking save. Invalid names or excessive counts disable save for both
 stdio and HTTP. Missing or null input preserves the stored list; an array
@@ -442,6 +448,7 @@ replaces it, with `[]` clearing it. Record serialization always includes
 `planSafeTools`, including `[]`, so configuration sync propagates clearing.
 
 Editing only the list or permission switch does not reconnect an MCP server.
+Unchanged stdio argument vectors are preserved verbatim when saving the list.
 A new session or runtime rebuild reads the updated setting and list, but an already-running or reused
 runtime may keep its old tool metadata until reload or rebuild. There is
 no hot-update guarantee, and subagent MCP selection is outside this policy.

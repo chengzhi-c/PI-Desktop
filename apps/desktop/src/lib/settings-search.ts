@@ -397,7 +397,11 @@ export function searchSettings(
     }
     for (const key of entry.keywordKeys) {
       if (t(key).toLowerCase().includes(q)) {
-        hits.push({ tab: entry.id, tabLabelKey: entry.labelKey, rowKey: key });
+        hits.push({
+          tab: entry.id,
+          tabLabelKey: entry.labelKey,
+          rowKey: key === "settings.allowMcpInPlanGoalDesc" ? "settings.allowMcpInPlanGoal" : key,
+        });
       }
     }
   }

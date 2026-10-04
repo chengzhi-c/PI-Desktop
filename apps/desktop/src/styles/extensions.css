@@ -1321,16 +1321,10 @@
 }
 
 .ext-plan-safe-tools {
-  display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
 .ext-plan-safe-tool {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--ds-text);
   font-family: var(--font-mono);
   font-size: var(--text-3xs);
 }

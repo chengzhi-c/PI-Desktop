@@ -93,19 +93,12 @@ fn plan_safe_tools_round_trip_and_reject_wildcards() {
         too_many.plan_safe_tools = Some((0..33).map(|index| format!("tool{index}")).collect());
         assert!(registry.upsert(too_many).is_err());
 
-        let omitted: McpServerInput =
-            serde_json::from_str(r#"{"id":"ctx","transport":"stdio"}"#).unwrap();
-        assert!(omitted.plan_safe_tools.is_none());
-        let cleared: McpServerInput =
-            serde_json::from_str(r#"{"id":"ctx","planSafeTools":[]}"#).unwrap();
-        assert_eq!(cleared.plan_safe_tools.as_deref(), Some([].as_slice()));
-
-        // Absent or null keeps the list already on disk. An empty array clears it.
-        let mut again = stdio("ctx");
-        again.label = Some("Context".into());
-        again.plan_safe_tools = None;
-        let kept = registry.upsert(again).unwrap();
-        assert_eq!(kept.plan_safe_tools, vec!["search-docs", "get_page"]);
+        for payload in [r#"{"id":"ctx"}"#, r#"{"id":"ctx","planSafeTools":null}"#] {
+            let kept = registry
+                .upsert(serde_json::from_str(payload).unwrap())
+                .unwrap();
+            assert_eq!(kept.plan_safe_tools, vec!["search-docs", "get_page"]);
+        }
     });
 }
 

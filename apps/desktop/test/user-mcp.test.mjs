@@ -105,6 +105,7 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
     tools.map((tool) => tool.fullName),
     ["mcp_stub_lookup", "mcp_stub_ping"],
   );
+  assert.equal(tools.every((tool) => tool.planSafe === false), true);
   assert.equal(tools[0].description, "Look something up");
   // A tool with no description of its own still gets one the model can read.
   assert.match(tools[1].description, /Stub/);
@@ -113,21 +114,6 @@ test("a global server contributes mcp_-prefixed tools to any session", async (t)
 
   // A session with no project at all still sees a global server.
   assert.equal((await rt.toolsForProject(null)).length, 2);
-});
-
-test("planSafeTools marks only the named tools", async (t) => {
-  const dir = stubDir();
-  const rt = runtime(t);
-  rt.setRecords([stubRecord(dir, { planSafeTools: ["lookup"] })]);
-
-  const tools = await rt.toolsForProject("/repo");
-  const byName = Object.fromEntries(tools.map((tool) => [tool.toolName, tool.planSafe]));
-  assert.equal(byName.lookup, true);
-  assert.equal(byName.ping, false);
-  // A server with no list marks nothing, which is the old behavior.
-  rt.setRecords([stubRecord(dir)]);
-  const unmarked = await rt.toolsForProject("/repo");
-  assert.equal(unmarked.every((tool) => tool.planSafe === false), true);
 });
 
 test("refreshing HTTP MCP status detects a server that went offline", async (t) => {
@@ -174,6 +160,50 @@ test("refreshing HTTP MCP status detects a server that went offline", async (t) 
   assert.deepEqual(await pendingCall, { content: [{ type: "text", text: "completed" }] });
   assert.equal(pings, 2);
 });
+
+test("an OAuth wait cannot reuse an obsolete server configuration", async (t) => {
+  const oldToken = Promise.withResolvers();
+  const newToken = Promise.withResolvers();
+  const tokens = [oldToken, newToken];
+  const connectedUrls = [];
+  const calledUrls = [];
+  const rt = runtime(t, {
+    oauth: {
+      getValidAccessToken: () => tokens.shift()?.promise ?? Promise.resolve(null),
+      hasOAuth: async () => false,
+    },
+    createClient: ({ server }) => {
+      let connected = false;
+      return {
+        connect: async () => { connected = true; connectedUrls.push(server.url); return [{ name: "lookup" }]; },
+        getTools: () => connected ? [{ name: "lookup" }] : [],
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async () => { calledUrls.push(server.url); return server.url; },
+      };
+    },
+  });
+  const old = stubRecord("/unused", {
+    transport: "http", command: undefined, args: undefined,
+    url: "http://old.invalid/mcp", planSafeTools: [],
+  });
+  rt.setRecords([old]);
+  const discovery = rt.toolsForProject("/repo");
+  const saved = { ...old, url: "http://new.invalid/mcp", planSafeTools: ["lookup"] };
+  rt.setRecords([saved]);
+  const testing = rt.test(saved.id);
+  oldToken.resolve(null);
+  const obsolete = await discovery;
+  newToken.resolve(null);
+  assert.equal((await testing).state, "ready");
+  const tools = await rt.toolsForProject("/repo");
+  assert.equal(tools[0].planSafe, true);
+  assert.equal(await rt.callTool("mcp_stub_lookup", {}, "/repo"), saved.url);
+  assert.deepEqual(obsolete, []);
+  assert.deepEqual(connectedUrls, [saved.url]);
+  assert.deepEqual(calledUrls, [saved.url]);
+});
+
 test("stopping one session cancels only its active MCP call", async (t) => {
   const started = new Map();
   const finish = new Map();
@@ -340,13 +370,28 @@ test("an advertised tool reconnects after transport loss without another search"
 });
 
 test("reconnection revalidates the advertised tool list before dispatch", async (t) => {
-  const { rt, client, state } = reconnectingRuntime(t);
-  await rt.toolsForProject("/repo");
-  client.close();
-  state.advertised = [{ name: "replacement" }];
-  await assert.rejects(rt.callTool("mcp_stub_lookup", {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
-  assert.equal(state.handshakes, 2);
-  assert.deepEqual(state.calls, []);
+  for (const advertised of [[{ name: "replacement" }], [{ name: "search-docs" }, { name: "search_docs" }], [{ name: "search_docs" }]]) {
+    const { rt, client, state } = reconnectingRuntime(t);
+    rt.setRecords([stubRecord("/unused", { planSafeTools: ["search-docs"] })]);
+    state.advertised = [{ name: "search-docs" }];
+    const [admitted] = await rt.toolsForProject("/repo");
+    assert.equal(admitted.planSafe, true);
+    client.close();
+    state.advertised = advertised;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(rt.callTool(admitted.fullName, {}, "/repo", "old-session", admitted), { errorCode: "TOOL_NOT_FOUND" });
+    }
+    const renamed = advertised.length === 1 && advertised[0].name === "search_docs";
+    assert.equal(rt.hasTool(admitted.fullName), renamed);
+    assert.equal(state.handshakes, 2);
+    assert.deepEqual(state.calls, []);
+    if (renamed) {
+      const [fresh] = await rt.toolsForProject("/repo");
+      assert.equal(fresh.planSafe, false, "The renamed raw tool is not in the saved Plan/Goal list");
+      assert.equal(await rt.callTool(fresh.fullName, {}, "/repo", "new-agent-session", fresh), "search_docs");
+      assert.deepEqual(state.calls, ["search_docs"]);
+    }
+  }
 });
 
 test("a failed reconnect reports unavailability without repeated handshakes", async (t) => {
@@ -578,11 +623,55 @@ test("hyphenated raw names are marked before full-name conversion and dispatched
   assert.equal(result.content[0].text, "untagged:search-docs");
 });
 
+test("ambiguous full names cannot mix admission with another raw tool or server", async (t) => {
+  const release = Promise.withResolvers();
+  const secondReady = Promise.withResolvers();
+  const completed = [];
+  const calls = [];
+  const rt = runtime(t, {
+    createClient: ({ server }) => {
+      let connected = false;
+      const tools = server.id === "ctx-docs"
+        ? [{ name: "lookup" }, { name: "search-docs" }, { name: "search_docs" }]
+        : [{ name: "lookup" }];
+      return {
+        connect: async () => {
+          if (server.id === "ctx-docs") await release.promise;
+          connected = true;
+          completed.push(server.id);
+          if (server.id === "ctx_docs") secondReady.resolve();
+          return tools;
+        },
+        getTools: () => tools,
+        isConnected: () => connected,
+        close: () => { connected = false; },
+        callTool: async (name) => { calls.push([server.id, name]); return name; },
+      };
+    },
+  });
+  rt.setRecords([
+    stubRecord("/unused", { id: "ctx-docs", planSafeTools: ["lookup", "search-docs"] }),
+    stubRecord("/unused", { id: "ctx_docs", planSafeTools: [] }),
+  ]);
+  const pending = rt.toolsForProject("/repo");
+  await secondReady.promise;
+  release.resolve();
+  const tools = await pending;
+  assert.deepEqual(completed, ["ctx_docs", "ctx-docs"]);
+  for (const name of ["mcp_ctx_docs_lookup", "mcp_ctx_docs_search_docs"]) {
+    await assert.rejects(rt.callTool(name, {}, "/repo"), { errorCode: "TOOL_NOT_FOUND" });
+    assert.equal(rt.hasTool(name), false);
+  }
+  assert.deepEqual(tools, []);
+  assert.deepEqual(calls, []);
+});
+
 test("saving planSafeTools through IPC updates the next tool list without reconnecting", async (t) => {
   const dir = stubDir();
   const pidFile = join(dir, "pid");
   const rt = runtime(t);
-  let record = stubRecord(dir, { env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  let record = stubRecord(dir, { level: "global", env: { STUB_PID_FILE: pidFile }, planSafeTools: ["lookup"] });
+  let shadow = null;
   const handlers = new Map();
   registerMcpIpc({
     registrar: { handle: (channel, handler) => handlers.set(channel, handler) },
@@ -596,7 +685,7 @@ test("saving planSafeTools through IPC updates the next tool list without reconn
     }),
     userMcp: rt,
     currentWorkspacePath: () => "/repo",
-    refreshUserMcp: async () => { rt.setRecords([record]); return [record]; },
+    refreshUserMcp: async () => { const active = [shadow ?? record]; rt.setRecords(active); return active; },
     describeError: String,
     sendToRenderer: () => {},
     searchMcpMarket: async () => ({ entries: [] }),
@@ -623,4 +712,18 @@ test("saving planSafeTools through IPC updates the next tool list without reconn
   const tested = await handlers.get(IPC.invoke.mcpTest)({ id: record.id });
   assert.equal(tested.status.state, "ready");
   assert.notEqual(readFileSync(pidFile, "utf8"), editedPid);
+
+  const projectPidFile = join(dir, "project-pid");
+  shadow = stubRecord(dir, {
+    level: "project", projectPath: "/repo", planSafeTools: ["lookup"],
+    env: { STUB_PID_FILE: projectPidFile, STUB_TAG: "project" },
+  });
+  rt.setRecords([shadow]);
+  await rt.toolsForProject("/repo");
+  const projectPid = readFileSync(projectPidFile, "utf8");
+  await save({ id: record.id, level: "global", planSafeTools: ["ping"] });
+  const projectTools = await rt.toolsForProject("/repo");
+  assert.equal(readFileSync(projectPidFile, "utf8"), projectPid);
+  assert.equal(projectTools.find((tool) => tool.toolName === "lookup")?.planSafe, true);
+  assert.equal((await rt.callTool("mcp_stub_ping", {}, "/repo")).content[0].text, "project:ping");
 });

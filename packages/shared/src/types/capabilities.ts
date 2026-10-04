@@ -63,8 +63,8 @@ export type McpServerRecord = {
   url?: string;
   headers?: Record<string, string>;
   /**
-   * Raw MCP tool names allowed in Plan and Goal. Absent or empty keeps every
-   * tool from this server out of those modes.
+   * Raw names admitted in Plan/Goal when allowMcpInPlanGoal is off.
+   * Absent or empty admits none.
    */
   planSafeTools?: string[];
   enabled: boolean;

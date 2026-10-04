@@ -2331,7 +2331,7 @@ sklm: {
       "valuePlaceholder": "Valor",
       "removeRow": "Eliminar fila",
       "planSafe": "Herramientas para Plan y Meta",
-      "planSafeHint": "Solo estas herramientas están disponibles en Plan y Meta. Déjelo vacío para excluir este servidor de esos modos.",
+      "planSafeHint": "Con el permiso global de MCP desactivado, solo estas herramientas están disponibles en Plan y Meta. Déjelo vacío para no permitir ninguna.",
       "planSafePlaceholder": "search, get-docs",
       "planSafeMissing": "No anunciadas en la última prueba: {{names}}",
       "description": "Descripción",

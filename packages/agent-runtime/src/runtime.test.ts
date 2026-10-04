@@ -2158,7 +2158,8 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       mode,
       host,
       pluginTools: [
-        { name, description: "docs", parameters: {}, risk: "low", planSafeActions: [name] },
+        { name, description: "docs", parameters: {}, risk: "low", planSafeActions: [name],
+          mcpTool: { serverId: "ctx-docs", toolName: "search-docs" } },
         { name: "mcp_ctx_docs_write", description: "write", parameters: {} },
       ],
     });
@@ -2170,6 +2171,7 @@ describe("DesktopAgentRuntime deferred tool catalog", () => {
       await tool!.execute("mcp-safe-1", {});
       expect(host.call).toHaveBeenCalledWith("tools.execute", expect.objectContaining({
         toolName: name, mode, planSafeActions: [name],
+        mcpTool: { serverId: "ctx-docs", toolName: "search-docs" },
       }));
       expect(host.call).not.toHaveBeenCalledWith("tools.execute", expect.objectContaining({
         declaredRisk: "low",

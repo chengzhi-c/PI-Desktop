@@ -3347,7 +3347,7 @@ identify the platform validation still needed.
   advertising `search-docs` and `ping`; test both stdio and HTTP editors.
   Start with **Allow MCP in Plan and Goal** off in Settings → AI → Permissions.
 - **Steps**: 1) Before discovery, type `unseen,search-docs,` one character at
-  a time and save. Test the connection, select/unselect `ping`, and inspect
+  a time, backspace trailing spaces and separators, then save. Test the connection, select/unselect `ping`, and inspect
   both the manual input and saved list. 2) Try `search*` and 33 names.
   3) With only `search-docs` selected, start fresh Plan and Goal sessions;
   call the selected tool under `ask`, then `auto`. Try the unselected tool
@@ -3358,12 +3358,22 @@ identify the platform validation still needed.
   global MCP permission, reopen Settings, and create fresh Plan and Goal
   sessions. Call the otherwise unlisted `ping` under `ask` and `auto`.
   Disable the switch and rebuild the runtime; check the per-server list again.
-- **Expected**: Commas survive incremental typing, manual and checkbox
-  changes preserve one list, and `unseen` warns only after discovery without
+  7) Add `ctx_docs` with the same raw tool name and try the colliding full name.
+  Reconnect after a new advertisement introduces a colliding name. Remove the
+  collision, replace `search-docs` with `search_docs` on reconnect, retry twice
+  from the old runtime, then check a fresh Plan/Goal runtime and Agent call.
+  Change an HTTP URL while OAuth is pending. Save only the list of a stdio server with a
+  spaced or quoted argument and of a global server shadowed by a project record.
+  8) Apply an application sync record containing `allowMcpInPlanGoal: true` to a
+  device whose local switch is off.
+- **Expected**: Commas survive incremental typing, manual and discovered
+  selections preserve one list, and `unseen` warns only after discovery without
   blocking save. Invalid names and counts disable save with the specific
   Plan-safe shape/count errors. Only `search-docs` is visible in Plan/Goal;
-  RPC carries `["mcp_ctx_docs_search_docs"]` and dispatch uses raw
-  `search-docs`. `ask` still confirms at `medium` risk and `auto` allows;
+  RPC carries `["mcp_ctx_docs_search_docs"]` and preserves
+  `mcpTool: { serverId: "ctx-docs", toolName: "search-docs" }` through
+  `tools.execute` and `plugins.execute`; dispatch uses raw `search-docs`.
+  `ask` still confirms at `medium` risk and `auto` allows;
   sibling lists and wildcards are denied. Whitelist edits retain the live
   connection; fresh sessions/rebuilt runtimes use the new list, while a
   reused runtime may require reload. Sync carries `planSafeTools: []` and
@@ -3371,19 +3381,17 @@ identify the platform validation still needed.
   every active user MCP tool with its own full name, including unlisted `ping`;
   `ask` still requires approval at `medium` risk. Off restores per-server list
   admission in fresh/rebuilt sessions without reconnecting the server. Agent
-  and plugin admission remain unchanged.
+  and plugin admission remain unchanged. Colliding full names are not exposed
+  or executed, including after reconnect. Both stale-runtime retries reject
+  the renamed raw tool without dispatch. Fresh Plan/Goal runtimes do not admit
+  the unlisted `search_docs`; a fresh Agent call can use its current raw identity
+  with normal permissions. An obsolete OAuth wait cannot restore
+  an old connection configuration. List-only edits preserve the original argv
+  and effective project connection. Incoming application sync cannot change the
+  local MCP permission.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`, ADR 0211
 - **Acceptance**: E (tools & permissions) + Security
-- **Status**: Unit/integration-covered (`permissions.rs`, `mcp_servers.rs`,
-  configuration capture round-trip, `user-mcp.test.mjs`,
-  `mcp-plan-safe.test.mjs`, `mcp-permission-settings.test.mjs`, settings
-  round-trips, and `agent-runtime/src/runtime.test.ts`). On 2026-10-04, the
-  isolated task candidate passed the real Settings toggle/save/reload path and
-  fresh Plan/Goal `grok-4.7` calls to an unlisted read-only stdio MCP tool.
-  Each call waited for one `medium`-risk approval; the server-generated random
-  proof matched both the desktop tool result and the model answer. This is
-  focused step-6 evidence, not the complete journey above or latest-main
-  integration; the remaining desktop matrix is Draft (not run).
+- **Status**: Draft
 
 #### E2E-024L: Resident plugin service is supervised and visible
 

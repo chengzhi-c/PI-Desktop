@@ -58,6 +58,8 @@ test("Plan and Goal launch admit user MCP only by the switch or existing named l
       assert.equal(launch.sidecarParams.mode, mode);
       const byName = Object.fromEntries(launch.sidecarParams.pluginTools.map((tool) => [tool.name, tool]));
       assert.deepEqual(byName.mcp_ctx_lookup.planSafeActions, ["mcp_ctx_lookup"]);
+      assert.deepEqual(byName.mcp_ctx_lookup.mcpTool, { serverId: "ctx", toolName: "lookup" });
+      assert.deepEqual(byName.mcp_ctx_ping.mcpTool, { serverId: "ctx", toolName: "ping" });
       assert.deepEqual(byName.mcp_ctx_ping.planSafeActions,
         settings.allowMcpInPlanGoal ? ["mcp_ctx_ping"] : undefined);
       assert.equal(byName.mcp_ctx_ping.risk, undefined, "MCP risk is never downgraded");
@@ -74,6 +76,7 @@ test("the MCP permission row toggles and saves the same shared Plan/Goal setting
   });
   t.after(() => server.close());
   const { PlanGoalMcpRow } = await server.ssrLoadModule("/src/components/settings/PlanGoalMcpRow.tsx");
+  const { searchSettings } = await server.ssrLoadModule("/src/lib/settings-search.ts");
   const { SettingsToggle } = await server.ssrLoadModule("/src/components/ui.tsx");
   const i18n = createInstance();
   await i18n.init({ lng: "en", resources: { en: { translation: catalogs.en } } });
@@ -92,6 +95,9 @@ test("the MCP permission row toggles and saves the same shared Plan/Goal setting
     assert.ok(html.includes('aria-checked="' + checked + '"'));
     assert.equal(toggle.props.label, i18n.t("settings.allowMcpInPlanGoal"));
     assert.ok(html.includes(i18n.t("settings.allowMcpInPlanGoalDesc")));
+    const hit = searchSettings("change data", (key) => i18n.t(key)).find((row) => row.tab === "ai");
+    assert.equal(hit?.rowKey, "settings.allowMcpInPlanGoal", "description search must target the row title");
+    assert.equal(i18n.t(hit.rowKey), tree.props.title);
     toggle.props.onChange();
     assert.equal(settings.allowMcpInPlanGoal, !checked);
   }

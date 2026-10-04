@@ -2331,7 +2331,7 @@ sklm: {
       "valuePlaceholder": "Valeur",
       "removeRow": "Supprimer la ligne",
       "planSafe": "Outils pour Plan et Objectif",
-      "planSafeHint": "Seuls ces outils sont disponibles en modes Plan et Objectif. Laissez vide pour exclure ce serveur de ces modes.",
+      "planSafeHint": "Lorsque l’autorisation MCP globale est désactivée, seuls ces outils sont disponibles dans Plan et Objectif. Laissez vide pour n’en autoriser aucun.",
       "planSafePlaceholder": "search, get-docs",
       "planSafeMissing": "Absents du dernier test : {{names}}",
       "description": "Description",

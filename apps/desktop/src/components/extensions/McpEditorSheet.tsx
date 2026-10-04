@@ -12,7 +12,7 @@ import {
   type McpTransport,
   type ProjectRecord,
 } from "@pi-desktop/shared";
-import { Button, Checkbox, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
+import { Button, CheckboxGroup, Field, HelpIcon, Input, SettingsToggle, TooltipButton, cx, portalOverlay } from "../ui";
 import { IconPlay, IconServer, IconTerminal, IconX } from "../icons";
 import { ScopeControl } from "./ScopeControl";
 import { KeyValueRows, pairsToRecord, recordToPairs, type KeyValuePair } from "./KeyValueRows";
@@ -49,6 +49,8 @@ export type McpDraft = {
   transport: McpTransport;
   command: string;
   args: string;
+  /** The one-line field cannot losslessly represent every saved argument vector. */
+  originalArgs?: string[];
   env: KeyValuePair[];
   url: string;
   headers: KeyValuePair[];
@@ -82,6 +84,7 @@ export function draftFromRecord(record: McpServerRecord): McpDraft {
     transport: record.transport,
     command: record.command ?? "",
     args: (record.args ?? []).join(" "),
+    originalArgs: [...(record.args ?? [])],
     env: recordToPairs(record.env),
     url: record.url ?? "",
     headers: recordToPairs(record.headers),
@@ -162,7 +165,9 @@ export function draftToInput(
     ...base,
     transport: "stdio",
     command: draft.command.trim(),
-    args: splitArgs(draft.args),
+    args: draft.originalArgs && draft.args === draft.originalArgs.join(" ")
+      ? [...draft.originalArgs]
+      : splitArgs(draft.args),
     env: pairsToRecord(draft.env),
   };
 }
@@ -321,14 +326,8 @@ export function McpEditorSheet({
   const insecureHttp =
     draft.transport === "http" && isNonLoopbackHttpMcpUrl(draft.url.trim());
   const advertised = status?.state === "ready" ? status.toolNames : undefined;
-  const selectedPlanSafe = draft.planSafeTools.filter(Boolean);
+  const selectedPlanSafe = draft.planSafeTools.map((name) => name.trim()).filter(Boolean);
   const missingPlanSafe = missingPlanSafeTools(selectedPlanSafe, advertised);
-  const togglePlanSafe = (name: string) => {
-    const selected = new Set(selectedPlanSafe);
-    if (selected.has(name)) selected.delete(name);
-    else selected.add(name);
-    set("planSafeTools", [...selected]);
-  };
 
   return portalOverlay(
     <div
@@ -511,26 +510,23 @@ export function McpEditorSheet({
           <div className="ext-field-group">
             <Field label={t("extensions.mcp.planSafe")} hint={t("extensions.mcp.planSafeHint")}>
               <Input
-                value={draft.planSafeTools.join(", ")}
+                value={draft.planSafeTools.join(",")}
                 placeholder={t("extensions.mcp.planSafePlaceholder")}
                 onChange={(event) => {
                   // Keep blank segments so a typed comma survives the next render.
-                  set("planSafeTools", event.target.value.split(",").map((name) => name.trim()));
+                  set("planSafeTools", event.target.value.split(","));
                 }}
               />
             </Field>
             {advertised?.length ? (
-              <div className="ext-plan-safe-tools" role="group" aria-label={t("extensions.mcp.planSafe")}>
-                {advertised.map((name) => (
-                  <Checkbox
-                    key={name}
-                    className="ext-plan-safe-tool"
-                    label={name}
-                    checked={selectedPlanSafe.includes(name)}
-                    onChange={() => togglePlanSafe(name)}
-                  />
-                ))}
-              </div>
+              <CheckboxGroup
+                className="ext-plan-safe-tools"
+                itemClassName="ext-plan-safe-tool"
+                label={t("extensions.mcp.planSafe")}
+                options={advertised.map((name) => ({ value: name, label: name }))}
+                values={selectedPlanSafe}
+                onChange={(values) => set("planSafeTools", values)}
+              />
             ) : null}
             {missingPlanSafe.length ? (
               <p className="ext-sheet-warning" role="note">

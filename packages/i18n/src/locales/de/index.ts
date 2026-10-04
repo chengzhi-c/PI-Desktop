@@ -2331,7 +2331,7 @@ sklm: {
       "valuePlaceholder": "Wert",
       "removeRow": "Zeile entfernen",
       "planSafe": "Werkzeuge für Plan und Ziel",
-      "planSafeHint": "Nur diese Werkzeuge stehen in Plan und Ziel zur Verfügung. Leer lassen, damit dieser Server dort nicht verfügbar ist.",
+      "planSafeHint": "Bei deaktivierter globaler MCP-Berechtigung sind in Plan und Ziel nur diese Werkzeuge verfügbar. Leer lassen, um keines zuzulassen.",
       "planSafePlaceholder": "search, get-docs",
       "planSafeMissing": "Vom letzten Test nicht gemeldet: {{names}}",
       "description": "Beschreibung",

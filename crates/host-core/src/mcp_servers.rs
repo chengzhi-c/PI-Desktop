@@ -42,9 +42,8 @@ pub struct McpServerRecord {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
-    /// Raw MCP tool names the user allows in Plan and Goal. Empty denies every
-    /// tool from this server in those modes. Always serialized so a cleared
-    /// list survives config sync instead of being read back as "keep".
+    /// Raw MCP names admitted in Plan/Goal when the global MCP opt-in is off.
+    /// Always serialized so config sync propagates an explicitly cleared list.
     #[serde(default)]
     pub plan_safe_tools: Vec<String>,
     pub enabled: bool,
@@ -125,22 +124,6 @@ fn valid_plan_safe_tool(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-}
-
-fn normalize_plan_safe_tools(tools: &[String]) -> Result<Vec<String>> {
-    if tools.len() > MAX_PLAN_SAFE_TOOLS {
-        bail!("MCP_INVALID: at most {MAX_PLAN_SAFE_TOOLS} planSafeTools");
-    }
-    let mut normalized = Vec::with_capacity(tools.len());
-    for tool in tools {
-        let name = tool.trim();
-        if !valid_plan_safe_tool(name) {
-            bail!("MCP_INVALID: planSafeTools entry \"{tool}\" is not a tool name");
-        }
-        check_len("planSafeTools", name)?;
-        normalized.push(name.to_string());
-    }
-    Ok(normalized)
 }
 
 fn valid_env_key(key: &str) -> bool {
@@ -450,7 +433,7 @@ impl McpServerRegistry {
         }
         let previous_same_transport = current.filter(|record| record.transport == transport);
         let plan_safe_tools = match &input.plan_safe_tools {
-            Some(tools) => normalize_plan_safe_tools(tools)?,
+            Some(tools) => tools.iter().map(|name| name.trim().to_string()).collect(),
             None => current
                 .map(|record| record.plan_safe_tools.clone())
                 .unwrap_or_default(),

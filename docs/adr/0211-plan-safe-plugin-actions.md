@@ -116,6 +116,23 @@ Amended again by D439: the toggle ships on `Alt+Shift+W`, not on the `Mod+W`
 this ADR's D438 amendment first named, because the key is registered
 process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
+### 8. User MCP admission
+
+User MCP tools have no plugin action dispatcher. Each admitted tool therefore
+receives `planSafeActions: [fullName]`, and host-core requires exact membership.
+The user selects raw names in each server's `planSafeTools` list; wildcards are
+unsupported. With `allowMcpInPlanGoal` off, an empty list admits no tools.
+The local Settings permission explicitly opts in all active user MCP tools,
+including mutators, without trusting server safety annotations or lowering
+`medium` risk. Approval and plugin action checks remain unchanged. New or
+rebuilt runtimes read changes; existing runtimes retain their snapshots.
+
+Each runtime also snapshots the raw `serverId` and `toolName` in `mcpTool`.
+The identity travels unchanged through `tools.execute` and `plugins.execute`.
+Dispatch rejects normalized-name collisions and raw-route substitution on every
+call, including repeated retries after reconnect. A fresh runtime discovers the
+current raw tools and evaluates their admission independently.
+
 ## Consequences
 
 - Plan and Goal modes can inspect external resources through any plugin
@@ -165,25 +182,6 @@ Rejected because "no `Write` argument" is not the same as "no
 side-effect". The schema cannot tell that a navigation will trigger a
 login flow, that an `evaluate` will post a comment, or that a snapshot
 will sign the user in. The plugin author owns that knowledge.
-
-### Let a user MCP server reuse `planSafeActions` as an action enum
-
-Rejected. An MCP `tools/call` has no `action` argument, and there is no
-plugin runtime to reject an unlisted action after the host admits the
-tool. A non-empty list alone would therefore admit an unlisted sibling
-tool. The user instead names raw tool names on the server record
-(`planSafeTools`). The launch path attaches `planSafeActions: [fullName]`
-only to a tool whose raw name is listed, and the agent runtime forwards
-that list in `tools.execute`. Host-core admits an `mcp_` tool only when
-the list contains the exact full tool name of the call. An absent or
-empty list keeps the server out of Plan and Goal while the global permission
-is off. Wildcards remain unsupported. A user may explicitly opt in all active
-user MCP tools through Settings → AI → Permissions (`allowMcpInPlanGoal`),
-whose default is off. The control warns that MCP tools may change data; it
-retains the exact-name admission path and the existing approval policy rather
-than trusting a server's safety claims. The setting is local and follows the
-existing new-session/runtime-rebuild snapshot behavior. Admission does not
-lower the MCP tool's `medium` risk or authorize plugin actions.
 
 ### Default `summonWindow` to a tray-only affordance
 

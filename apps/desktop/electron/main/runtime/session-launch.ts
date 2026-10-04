@@ -665,6 +665,7 @@ export function createSessionLaunchRuntime({
             })),
           ...userMcpTools.map((tool) => ({
             name: tool.fullName,
+            mcpTool: { serverId: tool.serverId, toolName: tool.toolName },
             description: tool.description,
             parameters: tool.schema ?? { type: "object", properties: {} },
             // The list holds this tool's own full name, which is what
