@@ -1467,9 +1467,9 @@ async fn execute_plugin_tool(
     state: &Arc<Mutex<AppState>>,
     tx: &mpsc::UnboundedSender<String>,
     p: &ToolsExecuteParams,
-    mcp_tool: Option<&Value>,
     timeout_ms: u64,
     session_mode: &str,
+    mcp_tool: Option<&Value>,
 ) -> tools::ToolsExecuteResult {
     let started = std::time::Instant::now();
     let execution_id = uuid::Uuid::new_v4().to_string();
@@ -4042,9 +4042,9 @@ async fn handle_request(
                         &state,
                         &tx,
                         &p,
-                        params.get("mcpTool"),
                         tools::desktop_dispatch_timeout_ms(p.timeout_ms),
                         &durable_mode,
+                        params.get("mcpTool"),
                     )
                     .await
                 } else if scheduled_tools::recognizes(&p.tool_name) {
