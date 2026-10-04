@@ -434,6 +434,10 @@ export class UserMcpRuntime {
       ...(record.headers ?? {}),
       ...(oauthToken ? { Authorization: `Bearer ${oauthToken}` } : {}),
     };
+    const customTimeoutMs =
+      typeof record.timeoutSeconds === "number" && record.timeoutSeconds > 0
+        ? record.timeoutSeconds * 1000
+        : undefined;
     const client = this.options.createClient({
       // No plugin owns this server; `rootPath` is only the child's cwd, and the
       // user's own command may live anywhere on the machine.
@@ -452,9 +456,9 @@ export class UserMcpRuntime {
       values: record.transport === "stdio" ? (record.env ?? {}) : headers,
       audit: this.options.audit,
       auditScope: "mcp",
-      connectTimeoutMs: this.options.connectTimeoutMs,
-      callTimeoutMs: this.options.callTimeoutMs,
-      discoveryTimeoutMs: this.options.discoveryTimeoutMs,
+      connectTimeoutMs: customTimeoutMs ?? this.options.connectTimeoutMs,
+      callTimeoutMs: customTimeoutMs ? Math.max(customTimeoutMs, this.options.callTimeoutMs ?? 0) : this.options.callTimeoutMs,
+      discoveryTimeoutMs: customTimeoutMs ? Math.max(customTimeoutMs, this.options.discoveryTimeoutMs ?? 0) : this.options.discoveryTimeoutMs,
     });
     const entry: Entry = {
       record,
@@ -484,7 +488,8 @@ export function configurationChanged(before: McpServerRecord, after: McpServerRe
     JSON.stringify(before.args ?? []) !== JSON.stringify(after.args ?? []) ||
     JSON.stringify(before.env ?? {}) !== JSON.stringify(after.env ?? {}) ||
     before.url !== after.url ||
-    JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {})
+    JSON.stringify(before.headers ?? {}) !== JSON.stringify(after.headers ?? {}) ||
+    before.timeoutSeconds !== after.timeoutSeconds
   );
 }
 

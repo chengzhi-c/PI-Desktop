@@ -620,6 +620,7 @@ test("configurationChanged separates what a server is from who may use it", () =
   assert.equal(configurationChanged(base, { ...base, args: ["b.mjs"] }), true);
   assert.equal(configurationChanged(base, { ...base, env: { A: "2" } }), true);
   assert.equal(configurationChanged(base, { ...base, transport: "http", url: "https://x" }), true);
+  assert.equal(configurationChanged(base, { ...base, timeoutSeconds: 30 }), true);
   assert.equal(configurationChanged(base, { ...base, enabled: false }), true);
   // Re-enabling does not invalidate anything: nothing was running.
   assert.equal(configurationChanged({ ...base, enabled: false }, base), false);
@@ -761,4 +762,44 @@ test("saving planSafeTools through IPC updates the next tool list without reconn
   assert.equal(readFileSync(projectPidFile, "utf8"), projectPid);
   assert.equal(projectTools.find((tool) => tool.toolName === "lookup")?.planSafe, true);
   assert.equal((await rt.callTool("mcp_stub_ping", {}, "/repo")).content[0].text, "project:ping");
+});
+
+test("custom timeoutSeconds overrides default connect and call timeouts on client creation", () => {
+  let createdConfig = null;
+  const rt = new UserMcpRuntime({
+    createClient: (config) => {
+      createdConfig = config;
+      return {
+        connect: async () => [],
+        callTool: async () => ({}),
+        getTools: () => [],
+        isConnected: () => false,
+        close: () => {},
+        ping: async () => {},
+      };
+    },
+    connectTimeoutMs: 10_000,
+    callTimeoutMs: 100_000,
+    discoveryTimeoutMs: 30_000,
+  });
+
+  rt.setRecords([
+    {
+      id: "slow-server",
+      label: "Slow Server",
+      transport: "stdio",
+      command: "node",
+      args: ["slow.mjs"],
+      enabled: true,
+      timeoutSeconds: 45,
+      createdAt: "",
+      updatedAt: "",
+    },
+  ]);
+
+  void rt.connect(rt.listRecords()[0]);
+  assert.ok(createdConfig);
+  assert.equal(createdConfig.connectTimeoutMs, 45_000);
+  assert.equal(createdConfig.callTimeoutMs, 100_000);
+  assert.equal(createdConfig.discoveryTimeoutMs, 45_000);
 });

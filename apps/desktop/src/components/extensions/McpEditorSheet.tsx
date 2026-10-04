@@ -57,6 +57,7 @@ export type McpDraft = {
   planSafeTools: string[];
   enabled: boolean;
   scope: ActivationScope;
+  timeoutSeconds: string;
 };
 
 export function emptyMcpDraft(): McpDraft {
@@ -73,6 +74,7 @@ export function emptyMcpDraft(): McpDraft {
     planSafeTools: [],
     enabled: true,
     scope: GLOBAL_SCOPE,
+    timeoutSeconds: "",
   };
 }
 
@@ -91,6 +93,7 @@ export function draftFromRecord(record: McpServerRecord): McpDraft {
     planSafeTools: [...(record.planSafeTools ?? [])],
     enabled: record.enabled,
     scope: resolveScope(record.scope),
+    timeoutSeconds: record.timeoutSeconds !== undefined ? String(record.timeoutSeconds) : "",
   };
 }
 
@@ -143,6 +146,14 @@ export function draftToInput(
   draft: McpDraft,
   context?: { level?: AgentCapabilityLevel; projectPath?: string },
 ): McpServerInput {
+  const parsedTimeout = draft.timeoutSeconds.trim()
+    ? Number.parseInt(draft.timeoutSeconds.trim(), 10)
+    : undefined;
+  const timeoutInput: { timeoutSeconds?: number | null } = {};
+  if (!draft.timeoutSeconds.trim()) timeoutInput.timeoutSeconds = null;
+  else if (typeof parsedTimeout === "number" && !Number.isNaN(parsedTimeout)) {
+    timeoutInput.timeoutSeconds = parsedTimeout;
+  }
   const base = {
     id: draft.id.trim(),
     ...(context?.level ? { level: context.level } : {}),
@@ -150,6 +161,7 @@ export function draftToInput(
     label: draft.label.trim() || draft.id.trim(),
     description: draft.description.trim() || undefined,
     planSafeTools: normalizePlanSafeTools(draft.planSafeTools),
+    ...timeoutInput,
     enabled: draft.enabled,
     scope: draft.scope,
   };
@@ -217,6 +229,12 @@ function ManagementScope({
 export function mcpDraftError(draft: McpDraft): string | null {
   if (!draft.id.trim()) return "extensions.mcp.errorId";
   if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(draft.id.trim())) return "extensions.mcp.errorIdShape";
+  if (draft.timeoutSeconds.trim()) {
+    const parsed = Number(draft.timeoutSeconds.trim());
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 600) {
+      return "extensions.mcp.errorTimeoutRange";
+    }
+  }
   if (draft.transport === "stdio") {
     if (!draft.command.trim()) return "extensions.mcp.errorCommand";
     if (draft.command.includes("..")) return "extensions.mcp.errorCommandDots";
@@ -540,6 +558,17 @@ export function McpEditorSheet({
               value={draft.description}
               placeholder={t("extensions.mcp.descriptionPlaceholder")}
               onChange={(event) => set("description", event.target.value)}
+            />
+          </Field>
+
+          <Field label={t("extensions.mcp.timeout")} hint={t("extensions.mcp.timeoutHint")}>
+            <Input
+              type="number"
+              min={1}
+              max={600}
+              value={draft.timeoutSeconds}
+              placeholder={t("extensions.mcp.timeoutPlaceholder")}
+              onChange={(event) => set("timeoutSeconds", event.target.value)}
             />
           </Field>
 

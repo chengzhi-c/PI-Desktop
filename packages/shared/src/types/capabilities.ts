@@ -67,6 +67,8 @@ export type McpServerRecord = {
    * Absent or empty admits none.
    */
   planSafeTools?: string[];
+  /** Handshake/connection timeout in seconds (optional override). */
+  timeoutSeconds?: number;
   enabled: boolean;
   scope?: ActivationScope;
   createdAt: string;
@@ -91,6 +93,8 @@ export type McpServerInput = {
    * omitting the field keeps the stored list.
    */
   planSafeTools?: string[] | null;
+  /** Set to null to clear an existing server-specific timeout override. */
+  timeoutSeconds?: number | null;
   enabled?: boolean;
   scope?: ActivationScope;
 };
