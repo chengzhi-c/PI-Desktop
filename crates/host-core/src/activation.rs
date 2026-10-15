@@ -169,4 +169,12 @@ mod tests {
         assert_eq!(normalize_project_path("C:\\"), "C:/");
         assert_eq!(normalize_project_path("C:\\work\\app\\"), "C:/work/app");
     }
+
+    #[test]
+    fn windows_extended_length_scope_matches_plain_drive_path() {
+        let scope = projects(&[r"\\?\E:\work\app"]);
+
+        assert_eq!(normalize_project_path(r"\\?\E:\work\app"), "E:/work/app");
+        assert!(scope.matches(Some("E:/work/app/child")));
+    }
 }
