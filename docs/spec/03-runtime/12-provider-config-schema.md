@@ -458,6 +458,11 @@ declares `discoveryStyle: "openai_models"` — a declared model-list style, not
 one derived from `anthropic_messages`. Chat stays on Anthropic Messages while
 the model-list probe and the connection test both send a Bearer token.
 
+A declared style is a statement about the endpoint, not about one spelling of
+it: it holds for the base URL and for a URL pasted with an operation suffix
+(`/models`, `/messages`), which is stripped before resolution. Pasting back the
+address the settings dialog itself offered therefore keeps the same model-list
+authentication.
 
 Zhipu / Z.AI Completions requests still receive `thinkingFormat: "zai"` and
 `zaiToolStream: true`. pi-ai `zai-coding-cn` remains an alias of

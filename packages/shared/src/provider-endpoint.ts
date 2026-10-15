@@ -341,6 +341,22 @@ export function inferEndpointProfile(input: EndpointProfileInput): EndpointProfi
       detail: operation.suffix,
     });
   }
+  /*
+    The registry is consulted twice: once for the URL as typed, and once for the
+    base behind a pasted operation. `GET {base}/models` and `POST {base}/messages`
+    are the same deployment, so an endpoint that states its model-list style is
+    stating it for both spellings — otherwise pasting the address the settings
+    dialog itself wrote would silently drop the declaration.
+  */
+  const declaredFromOperation =
+    !registryByUrl && operation?.basePath
+      ? providerEndpointDefinitionForUrl(
+          `${parsed.origin}${operation.basePath}`,
+          canonicalEndpointUrl,
+        )
+      : undefined;
+  const declaredDiscoveryStyle =
+    registryByUrl?.discoveryStyle ?? declaredFromOperation?.discoveryStyle;
   if (registryByUrl?.apiStyle) {
     evidence.push({
       type: "known_endpoint",
@@ -427,8 +443,7 @@ export function inferEndpointProfile(input: EndpointProfileInput): EndpointProfi
     registry entry for the same host may still offer its own style as a later
     candidate (see `buildDiscoveryCandidates`).
   */
-  profile.discoveryStyle =
-    registryByUrl?.discoveryStyle ?? discoveryStyleForApiStyle(apiStyle);
+  profile.discoveryStyle = declaredDiscoveryStyle ?? discoveryStyleForApiStyle(apiStyle);
   profile.candidates = buildDiscoveryCandidates(profile);
   return profile;
 }
