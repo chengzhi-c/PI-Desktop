@@ -46,10 +46,6 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-/**
- * Register the real handlers against the row, serving the model list only to a
- * Bearer token — the behaviour the live endpoint was probed for.
- */
 async function handlersFor(t, row) {
   const catalog = new ModelsDevCatalog({ catalogPath });
   assert.equal(await catalog.ensureLoaded(), true, "the bundled snapshot must load");
@@ -109,6 +105,7 @@ test("the model list of an Anthropic-Messages plan is asked with a Bearer token"
   );
   assert.equal(result.source, "remote");
   assert.equal(result.discoveryStyle, "openai_models");
+  assert.equal(result.effectiveBaseUrl, "https://api.stepfun.com/step_plan/v1");
 });
 
 test("the connection test of that row uses the same credentials as its model list", async (t) => {
