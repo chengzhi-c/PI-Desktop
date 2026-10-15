@@ -8,7 +8,12 @@ import { TOOL_ACTIVATION_SECTION, toolDeclarationPolicy, toolActivationSection, 
 import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-journal.js";
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
-import { modeToolDenial, retainModeToolDeclaration, withModeExecutionGuard } from "./mode-tool-access.js";
+import {
+  contractModeWithholdsTool,
+  modeToolDenial,
+  retainModeToolDeclaration,
+  withModeExecutionGuard,
+} from "./mode-tool-access.js";
 import { restoreHostedSearchReplay } from "./hosted-search-replay.js";
 import { requestExtensionUi } from "./extensions/ui-request.js";
 import { readLocalRequestErrorDetails } from "./local-request-errors.js";
@@ -3871,18 +3876,12 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
         ? [createJevClassifierTool(this.jevApiKey)]
         : [];
 
-    // Plugins contribute Agent tools by default. Plan/Goal modes only
-    // expose plugins that declare plan-safe actions (ADR 0211); the
-    // host still enforces the per-action restriction at execute time.
-    const visiblePluginTools =
-      this.mode === "agent"
-        ? this.pluginTools
-        : this.pluginTools.filter(
-            (def) =>
-              Array.isArray(def.planSafeActions) &&
-              def.planSafeActions.length > 0,
-          );
-    const pluginTools: AgentTool[] = visiblePluginTools.map((def) => {
+    // Plugins contribute Agent tools by default. Every contribution reaches
+    // the catalog and the mode filter decides what survives: a plugin tool
+    // needs `planSafeActions` (ADR 0211), while an MCP tool has no such
+    // declaration and must stay visible for its approval card to be reachable
+    // (ADR 0330). The host still enforces both at execute time.
+    const pluginTools: AgentTool[] = this.pluginTools.map((def) => {
       // Plan/Goal modes annotate the description so the model knows which
       // actions it may actually call.
       const baseDescription =
@@ -4026,6 +4025,11 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     return this.declarationPolicy?.tools ?? this.activeTools();
   }
 
+  private isExtensionTool(name: string): boolean {
+    return this.extensionRunner?.getAgentTools().some((tool) => tool.name === name) ?? false;
+  }
+
+  /** Whether the plugin runtime will let this plugin tool run in a contract mode. */
   private isPlanSafePluginTool(name: string): boolean {
     return this.pluginTools.some(
       (def) =>
@@ -4035,26 +4039,29 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     );
   }
 
+  /**
+   * What the model may see in a contract mode. A withheld name leaves the
+   * catalog and is refused at execute time; every other name is declared, and
+   * the host permission path decides whether the call runs. Withholding is
+   * reserved for calls the mode can never permit, so `ToolSearch` stays and an
+   * unclassifiable MCP tool can still be discovered and then approved on its
+   * own card.
+   */
   private isToolAllowedInMode(name: string): boolean {
-    const kind = proposalKindForMode(this.mode);
-    if (!kind) return true;
-    // Contract modes are read-only: inspection tools, plan-safe plugin
-    // actions (ADR 0211), and the one submit tool that belongs to this kind.
-    if (this.isPlanSafePluginTool(name)) return true;
-    return new Set([
-      "Read",
-      "Glob",
-      "Grep",
-      "BrowserPreview",
-      "Bash",
-      ASK_TOOL_NAME,
-      CONTEXT_COMPACTION_TOOL_NAME,
-      SUBMIT_TOOL_NAMES[kind],
-    ]).has(name);
+    if (!proposalKindForMode(this.mode)) return true;
+    if (contractModeWithholdsTool(name)) return false;
+    // A trusted-extension tool runs in this process, so the host permission
+    // path never sees the call and cannot gate it. A contract mode therefore
+    // cannot offer one: withholding it is the only boundary available.
+    if (this.isExtensionTool(name)) return false;
+    // A plugin tool is admitted only when the plugin runtime will also hold it to
+    // a declared action list. One without a list is refused by the host, so
+    // declaring it would only offer the model a call that cannot succeed.
+    return !name.startsWith("plugin_") || this.isPlanSafePluginTool(name);
   }
 
   private isCoreTool(name: string): boolean {
-    return (
+    if (
       name === CONTEXT_COMPACTION_TOOL_NAME ||
       retainModeToolDeclaration(name) ||
       MODE_TRANSITION_TOOL_NAMES.has(name) ||
@@ -4064,20 +4071,17 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
       name === SUBAGENT_TOOL_NAME ||
       name === SUBAGENT_WAIT_TOOL_NAME ||
       name === SUBAGENT_LIST_TOOL_NAME ||
-      name === SUBAGENT_STOP_TOOL_NAME ||
-      (this.mode === "agent"
-        ? AGENT_CORE_TOOL_NAMES.has(name)
-        : proposalKindForMode(this.mode)
-          ? new Set([
-              "Read",
-              "Glob",
-              "Grep",
-              "Bash",
-              "BrowserPreview",
-              ASK_TOOL_NAME,
-            ]).has(name) || this.isPlanSafePluginTool(name)
-          : CHAT_CORE_TOOL_NAMES.has(name))
-    );
+      name === SUBAGENT_STOP_TOOL_NAME
+    ) {
+      return true;
+    }
+    if (this.mode === "agent") return AGENT_CORE_TOOL_NAMES.has(name);
+    if (!proposalKindForMode(this.mode)) return CHAT_CORE_TOOL_NAMES.has(name);
+    // A contract mode declares everything it has not withheld. An MCP tool is
+    // unclassifiable, so it must be visible for its own card to be reachable;
+    // deferring it behind ToolSearch would leave the approval path unreachable
+    // for the tools that need it most.
+    return !contractModeWithholdsTool(name);
   }
 
   private activeTools(): AgentTool[] {

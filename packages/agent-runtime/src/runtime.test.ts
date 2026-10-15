@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { Type } from "typebox";
 import { type Agent, type AgentMessage, type AgentTool } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
@@ -222,6 +223,41 @@ function runtimeTool(runtime: DesktopAgentRuntime, name: string): AgentTool {
   if (!tool) throw new Error(`Runtime tool not found: ${name}`);
   return tool;
 }
+
+describe("contract-mode tool catalog", () => {
+  /**
+   * A trusted-extension tool runs in this process, so no host permission call
+   * happens for it. If a contract mode declared it, the model could mutate the
+   * workspace with no card and no denial, which is the one hole the mode's own
+   * gate cannot close. Withholding it is the boundary.
+   */
+  it("withholds a trusted-extension tool in contract modes but keeps it in Agent mode", () => {
+    const extensionTool = {
+      name: "fx_write",
+      label: "fx_write",
+      description: "extension tool",
+      parameters: Type.Object({}),
+      execute: async () => ({ content: [{ type: "text" as const, text: "ok" }], details: {} }),
+    };
+    const withExtensionRunner = (runtime: DesktopAgentRuntime) => {
+      (runtime as unknown as { extensionRunner: unknown }).extensionRunner = {
+        getAgentTools: () => [extensionTool],
+      };
+      return runtime as unknown as { isToolAllowedInMode: (name: string) => boolean };
+    };
+
+    const plan = withExtensionRunner(createRuntime({ mode: "plan" }));
+    expect(plan.isToolAllowedInMode("fx_write")).toBe(false);
+    // A read-only builtin is still admitted, so the check is not blanket.
+    expect(plan.isToolAllowedInMode("Read")).toBe(true);
+
+    const goal = withExtensionRunner(createRuntime({ mode: "goal" }));
+    expect(goal.isToolAllowedInMode("fx_write")).toBe(false);
+
+    const agent = withExtensionRunner(createRuntime({ mode: "agent" }));
+    expect(agent.isToolAllowedInMode("fx_write")).toBe(true);
+  });
+});
 
 /** Minimal pi-ai assistant message; overrides carry the shape under test. */
 function assistantMessage(overrides: {

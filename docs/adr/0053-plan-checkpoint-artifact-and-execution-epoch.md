@@ -28,6 +28,13 @@ tool, which ADR 0064 restores as `new_context`); Write, Edit, plugin tools, and
 unknown tools remain host-denied. `SubmitPlan` is the only assistant tool call in its batch
 and is valid only for the active Plan turn.
 
+*(Amended by ADR 0330: "unknown tools" now means any builtin outside the
+read-only set, and the set is an allowlist so a builtin added later is denied
+until it is classified. `Bash` takes a permission card in every permission mode
+rather than following the selected one. An MCP tool is no longer denied by
+provenance — it takes a card. A plugin tool without `planSafeActions` stays
+denied.)*
+
 The input is exactly:
 
 ```ts

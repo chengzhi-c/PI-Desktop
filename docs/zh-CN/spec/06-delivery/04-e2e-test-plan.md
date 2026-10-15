@@ -878,10 +878,9 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 单击同一 Composer 芯片返回 Agent。 4) 开始回合并尝试
   在运行中或待处理的 Plan 批准可见时切换模式。
 - **预期**：Composer 芯片更新活动会话 `mode`（Plan 和
-  Goal 硬否认 Write/Edit 和插件工具，而 Bash 遵循所选的
-  权限模式； Agent 根据权限设置允许其正常工具）。的
-  当存在轮流或活动待批准时芯片被禁用并重新启用
-  会话返回 idle/planning 后。不呈现顶栏模式控件。
+  Goal 硬拒绝 Write/Edit，并拒绝未声明 `planSafeActions` 的插件工具，而 Bash 在每一种
+  权限模式下都弹出权限卡；Agent 根据权限设置允许其正常工具）。当存在轮流或活动待批准时
+  芯片被禁用并重新启用会话返回 idle/planning 后。不呈现顶栏模式控件。
 - **链接规格**：`04-ux/08-component-spec.md`（§2，§11），
   `03-runtime/03-tools-and-permissions.md`（§10），
   `03-runtime/04-data-storage.md` (§8)
@@ -1152,8 +1151,8 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 #### E2E-019c：权限模式管理高风险批准 (D115/D132)
 
 - **先决条件**：Agent 模式；项目开放；全局默认`ask`。
-- **步骤**： 1) 使用新继承的会话和全局默认“每次询问”，打开编写器菜单 - 期望“每次询问”都被选中，且没有 global-default/inherit 标签 - 然后要求 Agent 写入工作区文件并期望获得权限卡。 2) 将会话芯片切换为接受编辑；重复一下——预计 Write/Edit 不会出现任何卡，但 Bash 仍然会出现卡。 3) 切换到“自动”——预计 Bash 也不会卡。 4) 在设置中将全局默认值设置为接受编辑后创建另一个继承会话 - 期望输入框芯片和菜单选择直接显示接受编辑并且自动允许 Write/Edit。 5) 将会话切换到 Plan，然后切换到 Goal，并设置自动 — 预计 Write/Edit/plugin 会被拒绝，但 Bash 会允许而无需确认。
-- **预期**：有效模式=会话覆盖→全局默认→询问； Plan 和 Goal Write/Edit/plugin 硬否认超越每种模式，而他们的 Bash 遵循所选模式；输入框芯片和菜单始终显示有效模式，无需 default/inherit 出处。
+- **步骤**： 1) 使用新继承的会话和全局默认“每次询问”，打开编写器菜单 - 期望“每次询问”都被选中，且没有 global-default/inherit 标签 - 然后要求 Agent 写入工作区文件并期望获得权限卡。 2) 将会话芯片切换为接受编辑；重复一下——预计 Write/Edit 不会出现任何卡，但 Bash 仍然会出现卡。 3) 切换到“自动”——预计 Bash 也不会卡。 4) 在设置中将全局默认值设置为接受编辑后创建另一个继承会话 - 期望输入框芯片和菜单选择直接显示接受编辑并且自动允许 Write/Edit。 5) 将会话切换到 Plan，然后切换到 Goal，并设置自动 — 预计 Write/Edit 被拒绝、未声明 `planSafeActions` 的插件工具被拒绝，而 Bash 即便在 Auto 下仍弹出权限卡。
+- **预期**：有效模式=会话覆盖→全局默认→询问； Plan 和 Goal 的 Write/Edit 硬拒绝超越每一种模式，而 Bash 在每一种权限模式下（含 Auto）都弹出权限卡，无法分类的 MCP 工具同样如此；输入框芯片和菜单始终显示有效模式，无需 default/inherit 出处。
 - **链接规格**：`03-runtime/03-tools-and-permissions.md §6`、`03-runtime/04-data-storage.md`、`08-meta/decisions-log.md` (D115/D132)
 - **接受**：E（权限模式解析并强制主机端）
 - **里程碑**：M5
@@ -4226,21 +4225,24 @@ eleven-tool-round desktop paths are verified by
 #### E2E-105：Plan 策略仍然具有主机权威
 
 - **先决条件**：项目绑定会话在 Plan 和 BrowserPreview 中处于空闲状态，
-  一个插件工具和一个伪造的 `requestedMode = "agent"` 夹具。
+  一个插件工具、一个 MCP 工具和一个伪造的 `requestedMode = "agent"` 夹具。
 - **步骤**：1) 检查可见的 Plan 工具。 2) 使用 Read/Glob/Grep 和
-  BrowserPreview。 3) 尝试编写、编辑、插入和
-  各种权限模式下通过主机的未知工具。 4) 在下面运行 Bash
-  询问、接受编辑和自动。
-- **预期**：Plan 拒绝 Write/Edit/plugin/unknown 工具，无论
-  伪造模式、补助金或自动； Bash 遵循所选的权限模式。的
-  运行时仍为 1 pi Agent 并且所有拒绝都会经过审核。
+  BrowserPreview。 3) 在各种权限模式下通过主机尝试 Write、Edit、只读清单之外的内置工具、
+  未声明 `planSafeActions` 的插件工具，以及一个 MCP 工具。 4) 在 Ask、Accept edits 和
+  Auto 下运行 Bash。
+- **预期**：无论伪造模式、授权还是 Auto，Plan 都拒绝 Write/Edit 以及只读清单之外的任何内置
+  工具；未声明 `planSafeActions` 的插件工具以 `PLUGIN_DISABLED_IN_PLAN` 被拒绝；MCP 工具和
+  Bash 在**每一种**权限模式下（含 Auto）各自弹出权限卡，批准后调用才运行。运行时仍为
+  1 pi Agent，且所有拒绝都会经过审核。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
   `03-runtime/03-tools-and-permissions.md`、`03-runtime/05-host-core-rust.md`、
-  `03-runtime/06-host-rpc-protocol.md`、`05-security/01-security.md`、ADR 0053
+  `03-runtime/06-host-rpc-protocol.md`、`05-security/01-security.md`、ADR 0053、ADR 0330
 - **接受**：E（工具和权限）、安全
 - **里程碑**：M6
 - **状态**：自动（2026-08-04 通过）：`test:e2e:plan` 加 host-core
-  permission/policy 和代理运行时工具组合测试
+  permission/policy 和代理运行时工具组合测试。Bash 与 MCP 的权限卡行为由
+  `permissions::tests` 以及两个 `rpc::tests::{plan,goal}_authorization*` 用例覆盖；
+  `test:e2e:plan` 尚未针对 ADR 0330 的姿态重跑。
 
 #### E2E-106：SubmitPlan 拒绝进入可编辑计划并重新提交新工件
 
@@ -5438,8 +5440,8 @@ eleven-tool-round desktop paths are verified by
   `EnterGoalMode`，然后是 `SubmitGoal(title, markdown, question)`。 2) 检查
   新 `.pi/goal/*.md` 工件中的确切 Markdown 字节以及匹配的
   `plan_approvals` 行。 3) 确认共享审批卡仅公开
-  Approve/Reject 和 Goal 否认 Write/Edit/plugin 工具，而 Bash 紧随其后
-  所选的权限模式。 4) 通过询问进行批准并遵守相同的 Agent
+  Approve/Reject，Goal 拒绝 Write/Edit 并拒绝未声明 `planSafeActions` 的插件工具，
+  而 Bash 在每一种权限模式下都弹出权限卡。 4) 通过 Ask 批准并让同一 Agent
   在 Agent 模式下恢复。 5）逐个标准检查最终响应
   验证或显式边界，然后重新加载会话。
 - **预期**：Goal 使用 Plan 审批管道，无需第二个规划者；

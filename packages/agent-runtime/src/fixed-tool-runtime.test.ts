@@ -287,12 +287,16 @@ describe("explicit MCP selection", () => {
     } finally { await f.runtime.dispose(); await wire.close(); }
   });
 
-  it("cannot expose selected MCP tools in Plan mode", async () => {
-    const wire = await wireFixture([]);
-    const f = runtimeFixture([], selectedTools, flashProvider(), false, "plan");
+  it("offers selected MCP tools in Plan mode and still routes them through Host approval", async () => {
+    const wire = await wireFixture([{ name: selectedTools[0].name }]);
+    const f = runtimeFixture([], selectedTools, flashProvider(), true, "plan");
     try {
-      await expect(f.runtime.prompt({ text: "Read", mcpServerIds: ["chosen"] })).rejects.toMatchObject({ errorCode: "TOOL_DENIED" });
-      expect(wire.requests).toHaveLength(0);
+      await f.runtime.prompt({ text: "Read", mcpServerIds: ["chosen"] });
+      // The tool is reachable, so its approval card can be shown; the Host is
+      // still what decides, and it refused here.
+      expect(f.executed).toEqual([selectedTools[0].name]);
+      expect(f.rows.find(row => row.toolName === selectedTools[0].name)).toMatchObject({ isError: true });
+      expect(JSON.stringify(wire.requests.at(-1)?.messages)).toContain("Permission denied");
     } finally { await f.runtime.dispose(); await wire.close(); }
   });
 

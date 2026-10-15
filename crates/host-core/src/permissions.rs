@@ -110,6 +110,18 @@ pub struct PendingPermission {
     pub created_at: String,
 }
 
+/// How a contract mode admits a tool that `PermissionManager::plan_mode_allows`
+/// accepted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContractAdmission {
+    /// Fall through to the ordinary permission path.
+    Allowed,
+    /// Nothing says this call is safe, so a human decides before it runs.
+    Approval,
+    /// Denied outright by the contract mode.
+    Denied,
+}
+
 #[derive(Default)]
 pub struct PermissionManager {
     pending: HashMap<String, Pending>,
@@ -137,24 +149,84 @@ impl PermissionManager {
         }
     }
 
-    /// The shared contract-mode allowlist. Plan and Goal expose the same
-    /// read/inspect core plus Bash; only their submit tool differs, and that one
-    /// is a sidecar-side tool that never reaches this gate. `new_context` is
-    /// sidecar-side too, and listed so the two sides of the bridge agree.
+    /// The builtin tools a contract mode may run without a card.
+    ///
+    /// This is an allowlist, not a denylist, and that is the point: a builtin
+    /// added later is denied until someone decides what it does, so the mode
+    /// cannot widen by omission. Every entry is read-only — it inspects the
+    /// workspace, asks the user a question, or hands the negotiation back to
+    /// the host. `new_context` and `ToolSearch` never reach this gate (they are
+    /// sidecar-side) but are listed so the two sides of the bridge agree.
+    ///
+    /// `Write`, `Edit`, `TodoWrite`, `GenerateImages` and the delegation tools
+    /// stay out: they change files, session state, or spawn work. A contract
+    /// mode denies them outright, and no permission mode or session grant
+    /// re-enables them.
+    const CONTRACT_MODE_READ_ONLY: [&str; 7] = [
+        "Read",
+        "Glob",
+        "Grep",
+        "BrowserPreview",
+        "asktool",
+        "new_context",
+        "ToolSearch",
+    ];
+
+    /// Whether a contract mode lets a call reach the ordinary permission path.
+    ///
+    /// A `true` answer is not a grant: the caller still applies risk,
+    /// permission mode, grants, and the external-path rule. A `false` answer is
+    /// a hard deny that no permission mode, session grant, or scratch path can
+    /// re-enable.
+    ///
+    /// This is the hard-deny question only. `Bash` and an unclassifiable MCP
+    /// tool answer `false` here and `Approval` from [`Self::contract_admission`],
+    /// so a caller that needs to distinguish a mode denial from a card the user
+    /// then refused must ask `contract_admission`, not this.
     pub fn plan_mode_allows(tool_name: &str) -> bool {
-        matches!(
-            tool_name,
-            "Read" | "Glob" | "Grep" | "Bash" | "BrowserPreview" | "new_context"
-        )
+        Self::CONTRACT_MODE_READ_ONLY.contains(&tool_name)
+    }
+
+    /// The contract modes' own gate.
+    ///
+    /// A read-only builtin falls through to the ordinary permission path, and
+    /// the one submit tool that belongs to this mode is added by the runtime.
+    /// `Bash` is gated rather than parsed: what a command does is decided by
+    /// the shell that runs it, and any static reading of the string would be
+    /// wrong in the permissive direction, so it takes a card every time.
+    ///
+    /// An MCP tool carries no classification signal at all — the name means
+    /// nothing and a server's self-declared annotation is untrusted — so it
+    /// also takes a card rather than running unread. A plugin tool does carry
+    /// one: a non-empty `planSafeActions` list means the plugin runtime already
+    /// restricts it to actions the user accepted, so it falls through.
+    /// Without that list it is refused, because the plugin runtime refuses it
+    /// too and an approval card the callee then ignores would be theater.
+    pub fn contract_admission(
+        tool_name: &str,
+        plan_safe_actions: Option<&[String]>,
+    ) -> ContractAdmission {
+        if Self::plan_mode_allows(tool_name) {
+            return ContractAdmission::Allowed;
+        }
+        if tool_name == "Bash" || tool_name.starts_with("mcp_") {
+            return ContractAdmission::Approval;
+        }
+        if tool_name.starts_with("plugin_")
+            && plan_safe_actions.is_some_and(|actions| !actions.is_empty())
+        {
+            return ContractAdmission::Allowed;
+        }
+        ContractAdmission::Denied
     }
 
     /// Auto-decision with an effective permission mode (D115).
     ///
     /// `permission_mode` is the already-resolved effective mode — the
     /// caller collapses `inherit` against the global default before calling.
-    /// The contract modes' hard deny for unavailable tools stays above every
-    /// permission mode: `auto` cannot re-enable Write/Edit/plugins in Plan or
-    /// Goal.
+    /// A contract mode's hard deny stays above every permission mode: `auto`
+    /// cannot re-enable `Write`/`Edit` in Plan or Goal, and cannot skip the card
+    /// an unclassified call needs.
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
@@ -202,30 +274,16 @@ impl PermissionManager {
             requires_external_path_permission,
             plan_safe_actions,
         } = params;
-        // The contract modes' tool allowlist is authoritative. This check
-        // intentionally precedes low-risk classification, auto, grants, and
-        // scratch paths, and covers Goal as well as Plan (D198).
-        //
-        // Plugin tools get a narrow carve-out: a plugin may declare a
-        // non-empty `planSafeActions` list (ADR 0211). When the runtime
-        // forwards that list, host-core admits the plugin tool in
-        // contract modes and the plugin-runtime enforces the per-action
-        // restriction at execute time. Without the list the plugin tool
-        // stays Plan-denied, exactly as ADR 0052 / ADR 0053 require.
-        if crate::sessions::is_contract_mode(mode) && !Self::plan_mode_allows(tool_name) {
-            if tool_name.starts_with("plugin_") {
-                if let Some(actions) = plan_safe_actions {
-                    if !actions.is_empty() {
-                        // Fall through; plugin-runtime will gate the
-                        // actual action.
-                    } else {
-                        return Some(PermissionDecision::Deny);
-                    }
-                } else {
-                    return Some(PermissionDecision::Deny);
-                }
-            } else {
-                return Some(PermissionDecision::Deny);
+        // A contract mode decides first, and that decision precedes low-risk
+        // classification, auto, grants, and scratch paths, so none of them can
+        // re-enable what it denied (D198, and Goal shares Plan's gate).
+        if crate::sessions::is_contract_mode(mode) {
+            match Self::contract_admission(tool_name, plan_safe_actions) {
+                ContractAdmission::Denied => return Some(PermissionDecision::Deny),
+                // No permission mode short-circuits an unclassified call: an
+                // opaque tool is exactly the case where `auto` must not decide.
+                ContractAdmission::Approval => return None,
+                ContractAdmission::Allowed => {}
             }
         }
 
@@ -525,61 +583,58 @@ mod tests {
         }
     }
 
+    /// A contract mode denies what changes state, whatever the permission mode
+    /// would otherwise allow. `auto` and `accept-edits` cannot re-enable it,
+    /// and neither can a session grant.
     #[test]
-    fn plan_bash_follows_permission_mode() {
-        let pm = PermissionManager::default();
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "ask", &no_grants()),
-            None
-        );
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "plan", "auto", &no_grants()),
-            Some(PermissionDecision::AllowOnce)
-        );
-    }
-
-    #[test]
-    fn plan_denial_wins_over_grants_and_scratch_exceptions() {
+    fn contract_modes_deny_state_changing_builtins_in_every_permission_mode() {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
         grants.insert(
             "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
+            vec![
+                "Write".to_string(),
+                "Edit".to_string(),
+                "TodoWrite".to_string(),
+                "GenerateImages".to_string(),
+            ],
         );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
-            assert_eq!(
-                pm.evaluate_auto_with_permission_mode("s", tool, "plan", "auto", &grants),
-                Some(PermissionDecision::Deny),
-                "{tool} must be denied in plan"
-            );
+        for contract in ["plan", "goal"] {
+            for mode in ["ask", "accept-edits", "auto"] {
+                for tool in [
+                    "Write",
+                    "Edit",
+                    "TodoWrite",
+                    "GenerateImages",
+                    "an_unclassified_builtin",
+                ] {
+                    assert_eq!(
+                        pm.evaluate_auto_with_permission_mode("s", tool, contract, mode, &grants),
+                        Some(PermissionDecision::Deny),
+                        "{contract} + {mode} must deny {tool}"
+                    );
+                }
+            }
         }
     }
 
+    /// Bash is gated, not parsed. Reading the command string would be wrong in
+    /// the permissive direction, so a contract mode takes a card every time
+    /// instead of letting `auto` decide what the shell may do.
     #[test]
-    fn goal_mode_shares_plans_hard_deny_and_bash_semantics() {
+    fn contract_modes_always_take_a_card_for_bash() {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
-        grants.insert(
-            "s".to_string(),
-            vec!["Write".to_string(), "plugin_x_run".to_string()],
-        );
-        for tool in ["Write", "Edit", "plugin_x_run", "unknown"] {
+        grants.insert("s".to_string(), vec!["Bash".to_string()]);
+        for contract in ["plan", "goal"] {
             for mode in ["ask", "accept-edits", "auto"] {
                 assert_eq!(
-                    pm.evaluate_auto_with_permission_mode("s", tool, "goal", mode, &grants),
-                    Some(PermissionDecision::Deny),
-                    "{tool} must be denied in goal + {mode}"
+                    pm.evaluate_auto_with_permission_mode("s", "Bash", contract, mode, &grants),
+                    None,
+                    "{contract} + {mode} must prompt even with a session grant"
                 );
             }
         }
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "ask", &no_grants()),
-            None
-        );
-        assert_eq!(
-            pm.evaluate_auto_with_permission_mode("s", "Bash", "goal", "auto", &no_grants()),
-            Some(PermissionDecision::AllowOnce)
-        );
     }
 
     #[test]
@@ -766,8 +821,12 @@ mod tests {
         assert!(other.is_none(), "grant is scoped to the exact tool name");
     }
 
+    /// An MCP tool has no classification signal, so a contract mode routes it
+    /// to a card. The grant below is deliberately present and deliberately not
+    /// enough: `auto` must not stand in for a decision about a tool whose name
+    /// is all the host knows.
     #[test]
-    fn mcp_tools_denied_in_contract_modes() {
+    fn contract_modes_route_unclassified_mcp_tools_to_a_card() {
         let pm = PermissionManager::default();
         let mut grants = HashMap::new();
         grants.insert("s".to_string(), vec!["mcp_srv_tool".to_string()]);
@@ -781,13 +840,17 @@ mod tests {
                         mode,
                         &grants
                     ),
-                    Some(PermissionDecision::Deny),
-                    "mcp tool must be denied in {contract} + {mode}"
+                    None,
+                    "mcp tool must prompt in {contract} + {mode}"
                 );
             }
         }
     }
 
+    /// The escape hatch is a declaration, not a default: a plugin tool is
+    /// admitted only when the plugin runtime will also hold it to the same
+    /// action list. Without one the tool is refused, because an approval the
+    /// callee then rejects would be theater.
     #[test]
     fn contract_mode_admits_plugin_tools_only_with_plan_safe_actions() {
         let pm = PermissionManager::default();
@@ -831,6 +894,38 @@ mod tests {
                 plan_safe_actions: Some(&actions),
             });
         assert_eq!(admitted, Some(PermissionDecision::AllowOnce));
+    }
+
+    /// A read-only builtin keeps whatever permission behavior it already had.
+    /// The contract mode neither grants it nor denies it, so the decision is
+    /// identical to the one Agent mode reaches — including for the tools the
+    /// risk classifier only rates medium, which still prompt under `ask`.
+    #[test]
+    fn contract_modes_leave_read_only_builtins_on_the_normal_path() {
+        let pm = PermissionManager::default();
+        for mode in ["ask", "accept-edits", "auto"] {
+            for tool in ["Read", "Glob", "Grep", "BrowserPreview", "asktool"] {
+                let in_agent =
+                    pm.evaluate_auto_with_permission_mode("s", tool, "agent", mode, &no_grants());
+                assert!(
+                    in_agent != Some(PermissionDecision::Deny),
+                    "fixture assumption: {tool} is not denied in Agent mode"
+                );
+                for contract in ["plan", "goal"] {
+                    assert_eq!(
+                        pm.evaluate_auto_with_permission_mode(
+                            "s",
+                            tool,
+                            contract,
+                            mode,
+                            &no_grants()
+                        ),
+                        in_agent,
+                        "{contract} + {mode} must not change {tool}'s normal decision"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

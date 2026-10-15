@@ -9,10 +9,12 @@
 |---|---|
 | Default mode | Agent |
 | Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
-| Plan tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitPlan + plugin tools that declare plan-safe actions |
-| Goal tools | Read / Glob / Grep / BrowserPreview / Bash / SubmitGoal + plugin tools that declare plan-safe actions |
-| Plan and Goal hard deny | Write / Edit / plugin tools without `planSafeActions` / unknown tools / the other kind's submit tool |
-| Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides plugin tools without one in Plan/Goal, host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
+| Plan tools | Read / Glob / Grep / BrowserPreview / asktool / SubmitPlan, plus MCP tools and `planSafeActions` plugin tools through a permission card |
+| Goal tools | Read / Glob / Grep / BrowserPreview / asktool / SubmitGoal, plus MCP tools and `planSafeActions` plugin tools through a permission card |
+| Plan and Goal hard deny | Write / Edit / TodoWrite / GenerateImages / the delegation tools / the other kind's submit tool. A builtin that is not on the read-only list is denied until it is classified |
+| Plan and Goal Bash | Always takes a permission card; the permission mode does not skip it |
+| Plan and Goal unclassified tools | An MCP tool has no classification signal, so it takes a permission card instead of running unread; a `plugin_` tool needs a non-empty `planSafeActions` list |
+| Plugin `planSafeActions` | Non-empty array of `action` strings; host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
@@ -240,8 +242,8 @@ as binary content.
   touch the project. The lexical check only skips the prompt; execution still
   goes through the full resolver, so it is not an escape vector. Plan and Goal do
   not expose Write/Edit, so the scratch auto-allow rule cannot make those tools
-  available in either. A contract-mode Bash call may still create or mutate
-  scratch data when its permission mode allows it.
+  available in either. A contract-mode Bash call still takes its permission card,
+  and the command it runs may create or mutate scratch data.
 - **Artifacts.** Successful scratch writes are not recorded in the
   `artifacts` table; artifact-driven file tabs represent workspace
   deliverables only, while the Files surface may still browse the active
@@ -513,8 +515,14 @@ self-declared by an MCP server is not trusted, unlike the risk in a plugin
 manifest the user accepted. Under `ask` and `accept-edits` an MCP tool call
 shows an approval card with reason "MCP server tool requires approval"; an
 `allow-session` grant suppresses further prompts for that tool name in that
-session (grants are in-memory only). `auto` auto-allows it, and the Plan/Goal
-contract-mode hard deny still applies (D640, ADR `mcp-tool-approval-risk`).
+session (grants are in-memory only). `auto` auto-allows it in Agent mode.
+
+In Plan and Goal an MCP tool is unclassifiable — the name says nothing about
+whether it mutates, and the server's own annotation is not evidence — so it takes
+a card in every permission mode, `auto` included. That is the one place a
+contract mode overrides the selected permission mode for a non-Bash tool. The
+tool stays in the model's catalog so the card is reachable (D640, ADR
+`mcp-tool-approval-risk`).
 
 ### Decision Types
 
@@ -539,6 +547,9 @@ How high-risk tool calls get approved is governed by a **permission mode**:
 An explicit outside-workspace path is an exception to the low-risk row: it is
 auto-allowed only in `auto`; `ask` and `accept-edits` both confirm it.
 
+A contract mode adds its own exceptions above this table: `Bash` and an
+unclassifiable MCP tool confirm in every mode, including `auto`.
+
 Resolution order per tool call (host-core `tools.execute`):
 
 1. Session's persisted `permission_mode`, unless it is `inherit`
@@ -550,18 +561,21 @@ Rules:
 - The session value is stored in `sessions.permission_mode`
   (`inherit | ask | accept-edits | auto`, default `inherit`, schema v5) and
   set via `session.configure` `permissionMode`.
-- Plan's hard deny wins over every permission mode for Write/Edit and plugin
-  tools that lack `planSafeActions`. `auto` cannot re-enable a hidden or denied tool.
+- A contract mode's hard deny wins over every permission mode for `Write`,
+  `Edit`, `TodoWrite`, `GenerateImages`, and the delegation tools. `auto` cannot
+  re-enable a hidden or denied tool.
 - Low-risk tools (`Read`/`Glob`/`Grep`) inside the session roots auto-allow in
   every mode, as before.
 - `BrowserPreview` is an explicit read-only UI inspection capability and is
   available in both operating modes.
-- Plan retains the permission-mode selector. Bash is confirmed under `ask` and
-  `accept-edits`, and is auto-allowed under `auto`; therefore Plan is planning
-  intent, not a strict read-only security profile.
+- Plan retains the permission-mode selector. `Bash` takes a confirmation in every
+  permission mode, so the selector does not change whether Plan may run a command
+  — only how the rest of the tools behave. Plan is planning intent, not a strict
+  read-only security profile, and the UI states that tradeoff.
 - `allow-session` grants continue to work under `ask` and stay scoped to the
   session; under `accept-edits`/`auto` they are simply never needed.
-- Scratch-directory writes (D114) stay prompt-free in every mode.
+- Scratch-directory writes (D114) stay prompt-free in every mode. Plan and Goal
+  do not expose `Write`/`Edit`, so that rule cannot make them available there.
 - UI: Settings → segmented global default; composer shows a per-session chip in
   Agent, Plan, and Goal whose menu offers the three effective modes without a
   separate global-default/inherit entry. The chip and selected menu item
@@ -622,16 +636,36 @@ for the current key-log policy.
 | Mode | Read/Glob/Grep | BrowserPreview | Write/Edit | Bash | Plugins |
 |---|---|---|---|---|---|
 | Agent | allow | allow | permission policy | permission policy | registered risk policy |
-| Plan | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
-| Goal | allow | allow | deny | `ask`/`accept-edits`: confirm; `auto`: allow | plan-safe actions only |
+| Plan | allow | allow | deny | confirm (every permission mode) | `planSafeActions` only |
+| Goal | allow | allow | deny | confirm (every permission mode) | `planSafeActions` only |
 
 ### Notes
-- Plan and Goal hard-deny Write/Edit and plugin tools without `planSafeActions` before permission UI; a direct host
-  call cannot bypass the matrix. Plugin tools that declare a non-empty list are admitted; the runner still rejects any action outside that list (ADR 0211).
+- A contract mode denies by what a call would do, not by where its name sits in a
+  list. The read-only builtins fall through to the ordinary permission path; a
+  builtin that is not on that list — `Write`, `Edit`, `TodoWrite`,
+  `GenerateImages`, the delegation tools — is hard-denied before the permission
+  UI, and a direct host call cannot bypass the matrix. An unclassified builtin is
+  denied rather than allowed, so a tool added later cannot widen the mode by
+  omission.
+- Plan and Goal Bash always takes a permission card, in every permission mode.
+  What a command does is decided by the shell that runs it, so the host does not
+  read the command string to decide; `auto` therefore cannot stand in for the
+  user's decision here. A `Bash` session grant still suppresses later prompts for
+  the rest of that session.
+- An MCP tool carries no classification signal — its name says nothing and a
+  server's self-declared risk annotation is untrusted — so a contract mode routes
+  it to a permission card rather than letting `auto` admit it unread. The tool
+  stays visible to the model so its card is reachable.
+- A `plugin_` tool is admitted when it declares a non-empty `planSafeActions`
+  list, because the plugin-runtime then rejects any action outside that list
+  (ADR 0211). Without one it is refused: an approval the callee would reject
+  anyway is not a gate.
+- A trusted-extension tool is withheld in Plan and Goal. It runs in the sidecar
+  process, so no `tools.execute` call reaches the host and the permission path
+  cannot gate it; withholding it is the only boundary available. Extensions keep
+  working unchanged in Agent mode.
 - Agent mode uses permission cards or the selected automatic policy for
   Write/Edit/Bash and registered plugin tools.
-- Plan and Goal Bash may mutate workspace or scratch state when the user selected Auto;
-  the UI must make that tradeoff visible.
 - allow-session is remembered per toolName for the active session only
 - Session grants follow `sessionId` across project-tab switches and are never
   inherited by another session or Temporary conversation
@@ -720,21 +754,23 @@ session's root unchanged.
 ## 11. Plugin Tools
 
 Plugins can contribute tools via `agentTools`. Agent mode sees every registered
-plugin tool. Plan and Goal see only tools whose `planSafeActions` list is
-non-empty (ADR 0211 / D384):
+plugin tool. Plan and Goal admit a plugin tool only when its `planSafeActions`
+list is non-empty (ADR 0211 / D384):
 
 1. manifest declaration
 2. user grants `agent.tool.register`
 3. PluginManager registers them into the ToolHost
 4. execution goes through the unified permission/audit/timeout wrapper
 
-A plugin tool without `planSafeActions` is hidden from the model in Plan and
-Goal. A direct attempt returns `PLUGIN_DISABLED_IN_PLAN` — the `_IN_PLAN` codes
-are shared by both contract modes rather than duplicated per kind — and is
-audited as a contract-mode policy denial. When the list is present, host-core
-admits the tool and the plugin-runtime rejects any `action` outside the list
-with `PERMISSION_DENIED`. Missing or invalid plugin risk defaults to `medium`
-for Agent and never grants contract-mode access by itself.
+A plugin tool without `planSafeActions` is refused in Plan and Goal. A direct
+attempt returns `PLUGIN_DISABLED_IN_PLAN` — the `_IN_PLAN` codes are shared by
+both contract modes rather than duplicated per kind — and is audited as a
+contract-mode policy denial. The refusal is deliberate rather than routed to a
+card: the plugin-runtime refuses the same call with `PERMISSION_DENIED`, so an
+approval the callee then rejects would not be a gate. When the list is present,
+host-core admits the tool and the plugin-runtime rejects any `action` outside the
+list with `PERMISSION_DENIED`. Missing or invalid plugin risk defaults to
+`medium` for Agent and never grants contract-mode access by itself.
 
 Naming:
 - Internal full name: `plugin.<pluginId>.<toolName>`
