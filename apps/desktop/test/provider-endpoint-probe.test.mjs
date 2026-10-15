@@ -281,3 +281,35 @@ test("a typed path that answers keeps the row, even when a sibling path also ans
   assert.equal(result.outcome.effectiveBaseUrl, "https://open.bigmodel.cn/api/v1");
   assert.deepEqual(result.outcome.models, [{ modelId: "glm-5.3", displayName: "glm-5.3" }]);
 });
+
+test("a preset whose model list authenticates differently is asked the way it documents", async () => {
+  /*
+    Reproduces the reported failure: `https://api.stepfun.com/step_plan/v1`
+    speaks Anthropic Messages for chat, so the row's discovery style used to be
+    derived from that wire style and the probe sent `x-api-key`. This endpoint
+    answers its model list only for `Authorization: Bearer`, so the probe got a
+    401 and the settings dialog reported a rejected API key for a valid one.
+    The preset therefore states its model-list style, and the sweep must use it.
+  */
+  const profile = inferEndpointProfile({ baseUrl: "https://api.stepfun.com/step_plan/v1" });
+  assert.equal(profile.candidates.length, 1);
+  assert.equal(profile.candidates[0].discoveryStyle, "openai_models");
+
+  const { calls, result } = await withFetch(
+    (url, init) => (init?.headers?.Authorization === "Bearer sk-secret"
+      ? jsonResponse({ data: [{ id: "step-5-preview" }] })
+      : jsonResponse({ error: { message: "Incorrect API key provided" } }, 401)),
+    () => probeDiscoveryCandidates({
+      origin: profile.origin,
+      candidates: profile.candidates,
+      apiKey: "sk-secret",
+    }),
+  );
+
+  assert.deepEqual(calls.map((call) => call.url), ["https://api.stepfun.com/step_plan/v1/models"]);
+  assert.equal(calls[0].headers["x-api-key"], undefined, "the model list does not accept x-api-key");
+  assert.equal(result.outcome.effectiveBaseUrl, "https://api.stepfun.com/step_plan/v1");
+  assert.deepEqual(result.outcome.models, [
+    { modelId: "step-5-preview", displayName: "step-5-preview" },
+  ]);
+});

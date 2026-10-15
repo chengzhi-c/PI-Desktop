@@ -198,6 +198,24 @@ describe("discovery candidates", () => {
     }
   });
 
+  it("asks a named endpoint for its model list in the style that endpoint documents", () => {
+    /*
+      StepFun's subscription endpoint speaks Anthropic Messages for chat but
+      publishes its model list the OpenAI way: it answers `Authorization:
+      Bearer` and rejects the Anthropic `x-api-key` header with 401. The preset
+      states that split, so the wire format stays Anthropic Messages while the
+      probe authenticates the way this model list requires.
+    */
+    const profile = inferEndpointProfile({ baseUrl: "https://api.stepfun.com/step_plan/v1" });
+    expect(profile?.apiStyle).toBe("anthropic_messages");
+    expect(profile?.discoveryStyle).toBe("openai_models");
+    expect(
+      profile?.candidates.map((candidate) =>
+        discoveryProbeUrl(candidate.baseUrl, candidate.discoveryStyle),
+      ),
+    ).toEqual(["https://api.stepfun.com/step_plan/v1/models"]);
+  });
+
   it("keeps every candidate on the origin the user typed", () => {
     for (const baseUrl of [
       "https://api.foo.com",
