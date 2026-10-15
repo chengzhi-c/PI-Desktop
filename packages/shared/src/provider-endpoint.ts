@@ -344,12 +344,14 @@ export function inferEndpointProfile(input: EndpointProfileInput): EndpointProfi
   /*
     The registry is consulted twice: once for the URL as typed, and once for the
     base behind a pasted operation. `GET {base}/models` and `POST {base}/messages`
-    are the same deployment, so an endpoint that states its model-list style is
-    stating it for both spellings — otherwise pasting the address the settings
-    dialog itself wrote would silently drop the declaration.
+    are the same deployment, and provider documentation names the deployment by
+    its operation URL, so an endpoint that states its model-list style states it
+    for both spellings. The typed value is resolved before the form normalizes
+    it, so a pasted `.../step_plan/v1/messages` would otherwise drop the
+    declaration and probe a model list that answers only Bearer with `x-api-key`.
   */
   const declaredFromOperation =
-    !registryByUrl && operation?.basePath
+    !registryByUrl && operation?.basePath !== undefined
       ? providerEndpointDefinitionForUrl(
           `${parsed.origin}${operation.basePath}`,
           canonicalEndpointUrl,
