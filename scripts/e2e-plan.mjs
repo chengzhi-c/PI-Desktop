@@ -244,7 +244,7 @@ async function scenario105(binary, tempRoot) {
         "EDIT_DISABLED_IN_PLAN",
       ],
       ["plugin_fake_tool", {}, "PLUGIN_DISABLED_IN_PLAN"],
-      ["UnknownTool", {}, "TOOL_DISABLED_IN_PLAN"],
+      ["TodoWrite", {}, "TOOL_DISABLED_IN_PLAN"],
     ];
     ctx.host.clearNotifications();
     for (const [toolName, args, code] of forbidden) {
@@ -257,6 +257,17 @@ async function scenario105(binary, tempRoot) {
       });
       assertToolFailure(result, code);
     }
+    // Deny by effect (ADR 0330): a builtin nobody classified is not a
+    // contract-mode denial. It reaches the ordinary path, where the host
+    // rejects the unregistered name.
+    const unclassified = await ctx.host.call("tools.execute", {
+      sessionId: session.id,
+      toolCallId: "e2e105-unclassified",
+      toolName: "UnknownTool",
+      args: {},
+      mode: "agent",
+    });
+    assertToolFailure(unclassified, "TOOL_NOT_FOUND");
     const marker = join(ctx.workspace, "plan-bash-marker.txt");
     const params = bashParams(session.id, "e2e105-bash", shell, planBashCommand(shell.dialect, marker));
     const pending = ctx.host.call("tools.execute", params);
@@ -275,7 +286,7 @@ async function scenario105(binary, tempRoot) {
     assert(ctx.host.matchingNotifications("permissions.request").length === 0, "Session grant did not suppress the second prompt");
     const current = await ctx.host.call("session.get", { id: session.id });
     assert(current.session?.mode === "plan", `forged mode changed session: ${shortJson(current)}`);
-    return `mode=plan read=ok denied=4 shell=${shell.id}/${shell.dialect}`;
+    return `mode=plan read=ok denied=4 unclassified=TOOL_NOT_FOUND shell=${shell.id}/${shell.dialect}`;
   }, binary, tempRoot);
 }
 

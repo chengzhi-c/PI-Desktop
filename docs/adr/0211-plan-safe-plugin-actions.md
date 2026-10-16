@@ -70,7 +70,8 @@ in the `plugins.execute` notification alongside the session mode.
 ### 4. Host-core admits plan-safe plugin tools in contract modes
 
 `crates/host-core/src/permissions.rs` retains the existing contract-mode
-hard deny (`contract_admission`, ADR 0330) for `Write`, `Edit`, unknown builtins, and
+hard deny (`contract_admission`, ADR 0330) for `Write`, `Edit`, the state-changing
+builtins, and
 plugin tools that arrive without `planSafeActions`. A plugin tool that
 arrives with a non-empty `planSafeActions` list now passes the contract
 gate. The list does not change any other rule: low-risk auto-allow, the
@@ -125,8 +126,8 @@ process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.
-- The contract modes' hard deny for `Write`, `Edit`, and unknown tools
-  is unchanged. A plugin that does not declare `planSafeActions` keeps
+- The contract modes' hard deny for `Write`, `Edit`, and the state-changing
+  builtins is unchanged. A plugin that does not declare `planSafeActions` keeps
   the ADR 0052 / ADR 0053 behavior.
 - The defense-in-depth check in the plugin-runtime means a bug in the
   runtime or host-core cannot escalate a Plan call into a mutation: the

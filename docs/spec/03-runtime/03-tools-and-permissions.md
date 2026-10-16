@@ -11,7 +11,7 @@
 | Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
 | Plan tools | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitPlan, plus discoverable MCP tools and plugins with `planSafeActions`; ordinary permissions still apply |
 | Goal tools | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitGoal, plus discoverable MCP tools and plugins with `planSafeActions`; ordinary permissions still apply |
-| Plan and Goal hard deny | Write / Edit / TodoWrite / GenerateImages / the delegation tools / the other kind's submit tool. A builtin that is not on the read-only list is denied until it is classified |
+| Plan and Goal hard deny | Write / Edit / TodoWrite / GenerateImages / PluginScaffold / PluginPack / the ScheduledTask tools / the delegation tools / the other kind's submit tool. Every other builtin follows the ordinary permission path |
 | Plan and Goal Bash | Requires approval, including in `auto`, unless the session has an exact-tool grant |
 | Plan and Goal unclassified tools | MCP tools require approval or an exact-tool session grant; `plugin_` tools require non-empty `planSafeActions` |
 | Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides tools without it, host applies ordinary permissions, plugin-runtime rejects unlisted actions (ADR 0211) |
@@ -519,9 +519,8 @@ session (grants are in-memory only). `auto` auto-allows it in Agent mode.
 
 In Plan and Goal an MCP tool is unclassifiable — the name says nothing about
 whether it mutates, and the server's own annotation is not evidence — so it takes
-a card in every permission mode, `auto` included. That is the one place a
-contract mode overrides the selected permission mode for a non-Bash tool. The
-tool stays in the model's catalog so the card is reachable (D640, ADR
+a card in every permission mode, `auto` included, exactly as Bash does. The tool
+stays in the model's catalog so the card is reachable (D640, ADR
 `mcp-tool-approval-risk`).
 
 ### Decision Types
@@ -561,8 +560,8 @@ Rules:
 - The session value is stored in `sessions.permission_mode`
   (`inherit | ask | accept-edits | auto`, default `inherit`, schema v5) and
   set via `session.configure` `permissionMode`.
-- A contract mode's hard deny wins over every permission mode for `Write`,
-  `Edit`, `TodoWrite`, `GenerateImages`, and the delegation tools. `auto` cannot
+- A contract mode's hard deny wins over every permission mode for the
+  state-changing builtins listed in the hard-deny row above. `auto` cannot
   re-enable a hidden or denied tool.
 - Low-risk tools (`Read`/`Glob`/`Grep`) inside the session roots auto-allow in
   every mode, as before.
@@ -641,12 +640,13 @@ for the current key-log policy.
 
 ### Notes
 - A contract mode denies by what a call would do, not by where its name sits in a
-  list. The read-only builtins fall through to the ordinary permission path; a
-  builtin that is not on that list — `Write`, `Edit`, `TodoWrite`,
-  `GenerateImages`, the delegation tools — is hard-denied before the permission
-  UI, and a direct host call cannot bypass the matrix. An unclassified builtin is
-  denied rather than allowed, so a tool added later cannot widen the mode by
-  omission.
+  list. Builtins whose purpose is to change state — `Write`, `Edit`,
+  `TodoWrite`, `GenerateImages`, `PluginScaffold`, `PluginPack`, the
+  `ScheduledTask*` tools, the `Task*` delegation tools — are hard-denied before
+  the permission UI, and a direct host call cannot bypass the matrix. Every other
+  builtin, including one nobody classified, falls through to the ordinary
+  permission path, which still applies risk, the effective permission mode,
+  grants, and the external-path rule.
 - Plan and Goal Bash always takes a permission card, in every permission mode.
   What a command does is decided by the shell that runs it, so the host does not
   read the command string to decide; `auto` therefore cannot stand in for the

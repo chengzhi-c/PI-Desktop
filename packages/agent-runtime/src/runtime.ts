@@ -9,7 +9,7 @@ import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-jo
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
 import {
-  contractModeAllowsBuiltin,
+  contractModeWithholdsTool,
   modeToolDenial,
   retainModeToolDeclaration,
   withModeExecutionGuard,
@@ -4039,15 +4039,19 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     );
   }
 
+  /**
+   * What a contract mode offers the model. It refuses what changes state and a
+   * tool that runs outside the host permission path; everything else reaches
+   * the host, which gates `Bash`, an opaque MCP tool, and a plugin tool without
+   * a declaration (ADR 0330).
+   */
   private isToolAllowedInMode(name: string): boolean {
     const kind = proposalKindForMode(this.mode);
     if (!kind) return true;
     // Extension tools execute locally, outside the host permission path.
     if (this.isExtensionTool(name)) return false;
-    return contractModeAllowsBuiltin(name)
-      || name === SUBMIT_TOOL_NAMES[kind]
-      || name.startsWith("mcp_")
-      || (name.startsWith("plugin_") && this.isPlanSafePluginTool(name));
+    if (contractModeWithholdsTool(name)) return false;
+    return !name.startsWith("plugin_") || this.isPlanSafePluginTool(name);
   }
 
   private isCoreTool(name: string): boolean {
@@ -4067,7 +4071,10 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     if (this.mode === "agent") return AGENT_CORE_TOOL_NAMES.has(name);
     if (!proposalKindForMode(this.mode)) return CHAT_CORE_TOOL_NAMES.has(name);
-    return contractModeAllowsBuiltin(name) || this.isPlanSafePluginTool(name);
+    // An MCP tool stays deferred behind ToolSearch: a server's schemas do not
+    // belong in every contract-mode request, and the tool is still discoverable
+    // when the model goes looking for it.
+    return this.isToolAllowedInMode(name) && !name.startsWith("mcp_");
   }
 
   private activeTools(): AgentTool[] {

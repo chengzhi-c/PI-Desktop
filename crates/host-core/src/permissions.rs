@@ -148,32 +148,60 @@ impl PermissionManager {
         }
     }
 
-    // Unclassified builtins stay denied; remote tools are gated separately.
-    const CONTRACT_MODE_READ_ONLY: [&str; 7] = [
-        "Read",
-        "Glob",
-        "Grep",
-        "BrowserPreview",
-        "asktool",
-        "new_context",
-        "ToolSearch",
+    /// Builtins a contract mode refuses: the ones that write files or session
+    /// state (`Write`, `Edit`, `TodoWrite`, `GenerateImages`, `PluginScaffold`,
+    /// `PluginPack`, the `ScheduledTask*` tools), the delegation family that
+    /// spawns and controls work (`Task*`), and `JevClassify`, whose Agent-only
+    /// paid call must not run from a reference retained across a mode switch.
+    /// Every other name reaches the ordinary permission path, so the gate
+    /// answers by effect instead of by provenance (ADR 0330). `PluginCheck` and
+    /// `Skill` are absent because they only read, and the runtime never creates
+    /// either outside Agent mode. `packages/agent-runtime/src/mode-tool-access.ts`
+    /// mirrors this list, and a test asserts the two stay identical.
+    const CONTRACT_MODE_STATE_CHANGING: [&str; 14] = [
+        "Write",
+        "Edit",
+        "TodoWrite",
+        "GenerateImages",
+        "PluginScaffold",
+        "PluginPack",
+        "ScheduledTaskCreate",
+        "ScheduledTaskUpdate",
+        "ScheduledTaskDelete",
+        "Task",
+        "TaskWait",
+        "TaskList",
+        "TaskStop",
+        "JevClassify",
     ];
+
+    /// The contract modes' own gate, asked before risk, permission mode,
+    /// grants, and scratch paths.
+    ///
+    /// `Denied` is a hard deny that no permission mode or session grant can
+    /// re-enable. `Approval` routes the call to a permission card. `Allowed`
+    /// falls through to the ordinary permission path, which still applies
+    /// risk, the effective permission mode, grants, and the external-path rule.
     pub fn contract_admission(
         tool_name: &str,
         plan_safe_actions: Option<&[String]>,
     ) -> ContractAdmission {
-        if Self::CONTRACT_MODE_READ_ONLY.contains(&tool_name) {
-            return ContractAdmission::Allowed;
+        if Self::CONTRACT_MODE_STATE_CHANGING.contains(&tool_name) {
+            return ContractAdmission::Denied;
         }
         if tool_name == "Bash" || tool_name.starts_with("mcp_") {
             return ContractAdmission::Approval;
         }
-        if tool_name.starts_with("plugin_")
-            && plan_safe_actions.is_some_and(|actions| !actions.is_empty())
-        {
-            return ContractAdmission::Allowed;
+        if tool_name.starts_with("plugin_") {
+            // The declaration is the escape hatch (ADR 0211): without one the
+            // plugin runtime refuses the call too, so a card would be theater.
+            return if plan_safe_actions.is_some_and(|actions| !actions.is_empty()) {
+                ContractAdmission::Allowed
+            } else {
+                ContractAdmission::Denied
+            };
         }
-        ContractAdmission::Denied
+        ContractAdmission::Allowed
     }
 
     /// Auto-decision with an effective permission mode (D115).
@@ -182,7 +210,7 @@ impl PermissionManager {
     /// caller collapses `inherit` against the global default before calling.
     /// A contract mode's hard deny stays above every permission mode: `auto`
     /// cannot re-enable `Write`/`Edit` in Plan or Goal, and cannot skip the card
-    /// an unclassified call needs.
+    /// `Bash` or a user MCP tool needs.
     #[cfg(test)]
     pub fn evaluate_auto_with_permission_mode(
         &self,
@@ -239,8 +267,8 @@ impl PermissionManager {
         if crate::sessions::is_contract_mode(mode) {
             match Self::contract_admission(tool_name, plan_safe_actions) {
                 ContractAdmission::Denied => return Some(PermissionDecision::Deny),
-                // No permission mode short-circuits an unclassified call: an
-                // opaque tool is exactly the case where `auto` must not decide.
+                // No permission mode short-circuits an opaque tool: `Bash` and
+                // an MCP tool are exactly the case where `auto` must not decide.
                 ContractAdmission::Approval => {
                     return has_session_grant.then_some(PermissionDecision::AllowSession);
                 }
@@ -529,36 +557,61 @@ mod tests {
 
     /// A contract mode denies what changes state, whatever the permission mode
     /// would otherwise allow. `auto` and `accept-edits` cannot re-enable it,
-    /// and neither can a session grant.
+    /// and neither can a session grant. The test drives the list itself, so it
+    /// pins the wiring for every name on it; a state-changing builtin missing
+    /// from the list is invisible here, which is the omission ADR 0330 accepts.
     #[test]
     fn contract_modes_deny_state_changing_builtins_in_every_permission_mode() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert(
+        let grants = HashMap::from([(
             "s".to_string(),
-            vec![
-                "Write".to_string(),
-                "Edit".to_string(),
-                "TodoWrite".to_string(),
-                "GenerateImages".to_string(),
-            ],
-        );
+            PermissionManager::CONTRACT_MODE_STATE_CHANGING
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect::<Vec<_>>(),
+        )]);
         for contract in ["plan", "goal"] {
             for mode in ["ask", "accept-edits", "auto"] {
-                for tool in [
-                    "Write",
-                    "Edit",
-                    "TodoWrite",
-                    "GenerateImages",
-                    "an_unclassified_builtin",
-                ] {
+                for tool in PermissionManager::CONTRACT_MODE_STATE_CHANGING {
                     assert_eq!(
                         pm.evaluate_auto_with_permission_mode("s", tool, contract, mode, &grants),
                         Some(PermissionDecision::Deny),
-                        "{contract} + {mode} must deny {tool}"
+                        "{contract} + {mode} denies {tool} even with a session grant"
                     );
                 }
             }
+        }
+    }
+
+    /// The posture is deny-by-effect (ADR 0330): a builtin nobody classified is
+    /// not refused here, it follows the ordinary permission path. `auto` admits
+    /// it, every other permission mode asks.
+    #[test]
+    fn contract_modes_route_an_unclassified_builtin_to_the_normal_path() {
+        let pm = PermissionManager::default();
+        for contract in ["plan", "goal"] {
+            assert_eq!(
+                pm.evaluate_auto_with_permission_mode(
+                    "s",
+                    "an_unclassified_builtin",
+                    contract,
+                    "auto",
+                    &no_grants()
+                ),
+                Some(PermissionDecision::AllowOnce),
+                "{contract} + auto follows the ordinary path"
+            );
+            assert_eq!(
+                pm.evaluate_auto_with_permission_mode(
+                    "s",
+                    "an_unclassified_builtin",
+                    contract,
+                    "ask",
+                    &no_grants()
+                ),
+                None,
+                "{contract} + ask takes a card"
+            );
         }
     }
 

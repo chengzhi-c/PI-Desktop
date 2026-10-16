@@ -14,7 +14,7 @@
 | Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
 | Plan 工具 | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitPlan，以及可发现的 MCP 工具和声明 `planSafeActions` 的插件；普通权限规则仍适用 |
 | Goal 工具 | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitGoal，以及可发现的 MCP 工具和声明 `planSafeActions` 的插件；普通权限规则仍适用 |
-| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / TodoWrite / GenerateImages / 委派工具 / 另一类的提交工具。不在只读清单内的内置工具在分类前一律拒绝 |
+| Plan 和 Goal 硬拒绝 | 写入 / 编辑 / TodoWrite / GenerateImages / PluginScaffold / PluginPack / ScheduledTask 系列 / 委派工具 / 另一类的提交工具。其余内置工具走普通权限路径 |
 | Plan 和 Goal 的 Bash | 包括 `auto` 在内均需确认，已有精确工具名的会话授权除外 |
 | Plan 和 Goal 的未分类工具 | MCP 工具需要确认或精确工具名的会话授权；`plugin_` 工具需要非空 `planSafeActions` |
 | 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时隐藏无列表工具，host 应用普通权限，plugin-runtime 拒绝未列出的动作（ADR 0211） |
@@ -427,9 +427,8 @@ MCP 工具调用会显示审批卡片，原因为 "MCP server tool requires appr
 Agent 模式下 `auto` 自动允许。
 
 在 Plan 和 Goal 中，MCP 工具无法分类——名称说明不了它是否改变状态，服务器自己的标注也不构成
-证据——因此它在每种权限模式下都弹出权限卡，包括 `auto`。这是契约模式在 Bash 之外唯一覆盖所选
-权限模式的地方。该工具保留在模型的工具目录中，权限卡才够得着（D640，ADR
-`mcp-tool-approval-risk`）。
+证据——因此它在每种权限模式下都弹出权限卡，包括 `auto`，与 Bash 完全一样。该工具保留在模型的
+工具目录中，权限卡才够得着（D640，ADR `mcp-tool-approval-risk`）。
 
 ### 决策类型
 
@@ -465,8 +464,8 @@ Agent 模式下 `auto` 自动允许。
 - 会话值存储在 `sessions.permission_mode` 中
   （`inherit | ask | accept-edits | auto`，默认 `inherit`，架构 v5）和
   通过 `session.configure` `permissionMode` 设置。
-- 契约模式的硬拒绝胜过所有权限模式，适用于 `Write`、`Edit`、`TodoWrite`、
-  `GenerateImages` 和委派工具。 `auto` 无法重新启用隐藏或拒绝的工具。
+- 契约模式的硬拒绝胜过所有权限模式，适用于上表硬拒绝行中列出的会改变状态的内置工具。
+  `auto` 无法重新启用隐藏或拒绝的工具。
 - 会话根目录内的低风险工具（`Read`/`Glob`/`Grep`）自动允许
   每种模式都和以前一样。
 - `BrowserPreview` 是显式只读 UI 检查功能，并且是
@@ -537,10 +536,10 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
 | Goal | 允许 | 允许 | 拒绝 | 确认（所有权限模式） | 仅 `planSafeActions` |
 
 ### 注释
-- 契约模式按调用的效果拒绝，而不是按名称是否在清单中。只读内置工具走普通权限路径；
-  不在该清单内的内置工具（`Write`、`Edit`、`TodoWrite`、`GenerateImages`、委派工具）在权限 UI 之前
-  硬拒绝，直接主机调用不能绕过矩阵。未分类的内置工具按拒绝处理而非放行，因此之后新增的工具
-  不会因遗漏而放宽该模式。
+- 契约模式按调用的效果拒绝，而不是按名称是否在清单中。会改变状态的内置工具（`Write`、`Edit`、
+  `TodoWrite`、`GenerateImages`、`PluginScaffold`、`PluginPack`、`ScheduledTask*`、`Task*` 委派工具）
+  在权限 UI 之前硬拒绝，直接主机调用不能绕过矩阵。其余内置工具（包括无人分类的新工具）走普通权限
+  路径，仍受风险、有效权限模式、会话授权与外部路径规则约束。
 - Plan 和 Goal 的 Bash 在每种权限模式下都弹出权限卡。命令做什么由运行它的 shell 决定，
   host 不读取命令字符串来判定；因此 `auto` 不能代替用户的决定。`Bash` 的会话授权仍会抑制
   该会话后续的重复确认。

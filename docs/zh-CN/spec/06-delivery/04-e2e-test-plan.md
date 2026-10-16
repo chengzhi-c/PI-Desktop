@@ -4227,11 +4227,12 @@ eleven-tool-round desktop paths are verified by
 - **先决条件**：项目绑定会话在 Plan 和 BrowserPreview 中处于空闲状态，
   一个插件工具、一个 MCP 工具和一个伪造的 `requestedMode = "agent"` 夹具。
 - **步骤**：1) 检查可见的 Plan 工具。 2) 使用 Read/Glob/Grep 和
-  BrowserPreview。 3) 在各种权限模式下通过主机尝试 Write、Edit、只读清单之外的内置工具、
+  BrowserPreview。 3) 在各种权限模式下通过主机尝试 Write、Edit、会改变状态的内置工具、
   未声明 `planSafeActions` 的插件工具，以及一个 MCP 工具。 4) 在 Ask、Accept edits 和
   Auto 下运行 Bash。
-- **预期**：无论伪造模式、授权还是 Auto，Plan 都拒绝 Write/Edit 以及只读清单之外的任何内置
-  工具；未声明 `planSafeActions` 的插件工具以 `PLUGIN_DISABLED_IN_PLAN` 被拒绝；MCP 工具和
+- **预期**：无论伪造模式、授权还是 Auto，Plan 都拒绝 Write/Edit 以及任何会改变状态的内置
+  工具；未声明 `planSafeActions` 的插件工具以 `PLUGIN_DISABLED_IN_PLAN` 被拒绝；无人分类的内置
+  工具走普通路径并以 `TOOL_NOT_FOUND` 失败；MCP 工具和
   Bash 在**每一种**权限模式下（含 Auto）各自弹出权限卡，批准后调用才运行。精确工具名的会话授权
   免去重复确认，但不授权其他工具或会话。运行时仍为同一 pi Agent，且所有拒绝都会经过审计。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
@@ -5938,8 +5939,8 @@ eleven-tool-round desktop paths are verified by
 ### US-UI-04 没有工作区上下文的 Composer
 - 打开 git 工作区时，composer 不显示项目、本地或分支
   提示表面上方的标签。
-- 操作模式选择器在 Agent、Plan 和 Goal 之间切换；双方签订合同
-  模式保留了权限模式芯片并解释了它们的 Bash 权衡。
+- 操作模式选择器在 Agent、Plan 和 Goal 之间切换；两种契约
+  模式保留了权限模式芯片并解释了 Bash 在每种模式下都需要确认。
 
 ### US-UI-05 区域设置 chrome
 - 在 zh-CN 系统语言环境中，侧边栏标签以中文呈现（项目/临时会话），

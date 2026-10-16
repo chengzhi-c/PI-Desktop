@@ -98,9 +98,11 @@ retained-tail recovery, ADR 0061's model-window-derived budgets, and ADR 0061's
    `floor(hardLimit * 0.9)`, matching the `should_roll_over` turn boundary.
    `hardLimit` remains the final request guard (D623). The name is synchronized
    across `activeTools()`,
-   `isCoreTool()`, the contract-mode allowlists, and the host-core
+   `isCoreTool()`, the contract-mode tool policy, and the host-core
    no-confirmation allowlist (`crates/host-core/src/permissions.rs`), where it
    replaces `"CompactContext"`.
+   *(Amended by ADR 0330: a contract mode keeps a deny list instead of an
+   allowlist, and `new_context` is admitted by falling through it.)*
 5. **Two-tier reminders, once each per window.** With
    `remaining = hardLimit - tokens`: tier one at
    `remaining <= clamp(hardLimit * 0.15, 8k, 32k)` states the remaining budget

@@ -9843,7 +9843,7 @@ mod tests {
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
+            ("TodoWrite", json!({}), "TOOL_DISABLED_IN_PLAN"),
         ] {
             let result = handle_request(
                 state.clone(),
@@ -9862,6 +9862,25 @@ mod tests {
             assert_eq!(result["errorCode"], expected, "{tool_name}");
             assert_eq!(result["ok"], false);
         }
+
+        // Deny by effect (ADR 0330): a builtin nobody classified is not a
+        // contract-mode denial. It reaches the ordinary path, where the tool
+        // registry rejects the unregistered name.
+        let unclassified = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session_id,
+                "toolCallId": "unclassified-call",
+                "toolName": "UnknownTool",
+                "args": {},
+                "mode": "agent"
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(unclassified["errorCode"], "TOOL_NOT_FOUND");
 
         // Bash is gated, not parsed: a contract mode takes a card even under
         // `auto`, because what a command does is decided by the shell that runs
@@ -9983,7 +10002,7 @@ mod tests {
                 "EDIT_DISABLED_IN_PLAN",
             ),
             ("plugin_demo_run", json!({}), "PLUGIN_DISABLED_IN_PLAN"),
-            ("UnknownTool", json!({}), "TOOL_DISABLED_IN_PLAN"),
+            ("TodoWrite", json!({}), "TOOL_DISABLED_IN_PLAN"),
         ] {
             let result = handle_request(
                 state.clone(),
@@ -10003,6 +10022,25 @@ mod tests {
             assert_eq!(result["errorCode"], expected, "{tool_name}");
             assert_eq!(result["ok"], false);
         }
+
+        // Deny by effect (ADR 0330): a builtin nobody classified is not a
+        // contract-mode denial. It reaches the ordinary path, where the tool
+        // registry rejects the unregistered name.
+        let unclassified = handle_request(
+            state.clone(),
+            "tools.execute",
+            json!({
+                "sessionId": session_id,
+                "toolCallId": "goal-unclassified-call",
+                "toolName": "UnknownTool",
+                "args": {},
+                "mode": "agent"
+            }),
+            tx.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(unclassified["errorCode"], "TOOL_NOT_FOUND");
 
         // Bash takes a card here too, so the strongest permission mode cannot
         // stand in for a decision about what the command will do.

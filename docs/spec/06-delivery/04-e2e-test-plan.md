@@ -7429,12 +7429,13 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 - **Preconditions**: A project-bound session is idle in Plan with BrowserPreview,
   a plugin tool, an MCP tool, and a forged `requestedMode = "agent"` fixture.
 - **Steps**: 1) Inspect visible Plan tools. 2) Use Read/Glob/Grep and
-  BrowserPreview. 3) Attempt Write, Edit, a builtin outside the read-only set,
-  a plugin tool without `planSafeActions`, and an MCP tool through the host with
-  every permission mode. 4) Run Bash under Ask, Accept edits, and Auto.
-- **Expected**: Plan denies Write/Edit and any builtin outside the read-only set
+  BrowserPreview. 3) Attempt Write, Edit, a state-changing builtin, a plugin
+  tool without `planSafeActions`, and an MCP tool through the host with every
+  permission mode. 4) Run Bash under Ask, Accept edits, and Auto.
+- **Expected**: Plan denies Write/Edit and any state-changing builtin
   regardless of the forged mode, grants, or Auto; a plugin tool without
-  `planSafeActions` is refused with `PLUGIN_DISABLED_IN_PLAN`; an MCP tool and
+  `planSafeActions` is refused with `PLUGIN_DISABLED_IN_PLAN`; a builtin nobody
+  classified reaches the ordinary path and fails as `TOOL_NOT_FOUND`; an MCP tool and
   Bash each show a permission card in **every** permission mode, Auto included,
   and the approved call then runs. An exact-tool session grant suppresses repeat
   prompts without authorizing other tools or sessions. The runtime remains one
