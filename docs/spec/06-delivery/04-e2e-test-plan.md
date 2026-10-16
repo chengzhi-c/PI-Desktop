@@ -4332,19 +4332,22 @@ window; opening a normal panel afterward must still work.
 - **Preconditions**: One retained project contains more than ten durable
   sessions with distinct updated timestamps; the sidebar uses the default
   Recently updated sort; another retained project has ten or fewer sessions.
-- **Steps**: 1) Inspect the large project's session rows and count them. 2)
-  Select the **Load N more…** control. 3) Switch the sort to Name and inspect
-  the same group before expanding. 4) Restart the app and inspect the group
-  again.
+- **Steps**: 1) Inspect the large project's session rows and count them. Check
+  rows with recent and older replies. Hover a row, then focus one with the
+  keyboard. 2) Select the **Load N more…** control. 3) Switch the sort to Name
+  and inspect the same group before expanding. 4) Restart the app and inspect
+  the group again.
 - **Expected**: The group shows exactly ten session rows by default plus a
-  **Load N more…** control (N = remaining session count) styled like the
-  time-grouped overflow; the ten rows are the first rows in the active sort
-  order, so pinned rows are never pushed behind unpinned rows and a Name sort
-  folds everything after the first ten alphabetically; selecting Load more
-  expands the full time-grouped list (Yesterday/Previous 7 days/Previous 14
-  days/Older headers appear as applicable) and the control disappears;
-  expansion is per group and resets on restart (not persisted); the project
-  with ten or fewer sessions shows no fold control.
+  **Load N more…** control (N = remaining session count); there are no time-group
+  headers. Every row places the title before a divider and the localized last
+  reply date. Replies within seven calendar days show an exact relative day
+  (including 0–7 days); older replies show a concrete localized date. Hovering
+  or focusing a row hides its date and reveals the session action. The ten rows
+  are the first rows in the active sort order, so pinned rows are never pushed
+  behind unpinned rows and a Name sort folds everything after the first ten
+  alphabetically; selecting Load more expands the flat list and the control
+  disappears. Expansion is per group and resets on restart (not persisted); the
+  project with ten or fewer sessions shows no fold control.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/09-interaction-patterns.md`
 - **Acceptance**: C (session organization)
 - **Milestone**: M5
@@ -5599,10 +5602,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   `close-behavior.json`); the main window is visible; Settings → General is
   reachable. macOS is excluded: it keeps the native Dock lifecycle.
 - **Steps**: 1) With the preference unset, click the close button (or press
-  the close-window shortcut) and answer the prompt: Cancel keeps the window
-  open and the preference unset; Close to tray hides the window, shows the
-  tray icon, and the app keeps running (a turn in flight stays live); Quit
-  exits the app. 2) Re-run each choice and verify it is remembered across a
+  the close-window shortcut) and verify the themed in-app dialog opens with Cancel focused. Escape, a
+  backdrop click, or Cancel keeps the window open and preference unset; Close to
+  tray hides the window, shows the tray icon, and leaves a live turn running;
+  Quit exits the app. Renderer-unavailable behavior uses the native fallback. 2) Re-run each choice and verify it is remembered across a
   full restart and that no second prompt ever appears once a choice exists.
   3) With `tray` set, click the tray icon: the window
   restores, shows, and focuses; the tray context menu offers Open and Quit,
@@ -5618,8 +5621,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   covered separately by E2E-124. 7) Invoke unknown values and `"ask"` on
   `pi-desktop/window/closeBehavior/set` and verify they fail closed, and
   verify the channel is rejected outright on macOS.
-- **Expected**: The first close prompts exactly once per unset state and
-  Cancel never persists a choice. Tray mode keeps the app alive with a
+- **Expected**: The first close renders the themed dialog exactly once per unset state. Escape, backdrop click, or Cancel never persists a choice; if the renderer is unavailable, a bounded native fallback is used, and failure to show it does not trap close. Tray mode keeps the app alive with a
   localized tooltip/menu and no data loss; switching to Quit app leaves the
   tray icon in place, because close-to-tray and macOS minimize still need a
   restore surface. The preference survives restarts and is honored by both
@@ -5635,38 +5637,50 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   ADR 0123
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5 on Windows/Linux (release qualification)
-- **Status**: Draft
+- **Status**: Themed renderer path, broker fallback, and Main close/quit choices
+  are covered by `lifecycle-confirmation-dialog-user-path.test.mjs`,
+  `lifecycle-dialog-broker.test.mjs`, and `lifecycle-close-behavior-runtime.test.mjs`;
+  the full persisted close-behavior journey remains Draft.
 
 #### E2E-204: Explicit quit confirms before shutdown (D363)
 
 - **Preconditions**: A normal interactive session is running (not a boot,
   supervision, or capture probe). The main window may be visible or tray-hidden.
 - **Steps**: 1) Choose Quit from the tray menu, or press Cmd+Q / the
-  application-menu Quit item. 2) Cancel the native warning and confirm the
-  window, tray, host-core, and sidecar remain. 3) Repeat and confirm Quit;
-  confirm the ordered shutdown runs. 4) On Windows/Linux with close behavior
-  unset, close the window and choose Quit on the D230 dialog; confirm no
-  second warning. 5) Launch with `PI_DESKTOP_BOOT_PROBE=1` (and the
-  supervision/capture equivalents) and confirm `app.quit()` exits without a
-  dialog. 6) On a packaged Windows NSIS or Linux AppImage install, download an
-  update and choose Restart to update; confirm the quit warning never appears
-  and the installer finishes the upgrade and relaunch.
-- **Expected**: Accidental explicit quit is cancellable. A user who already
-  chose Quit on the close-behavior dialog is not asked again. Probes used by
-  automation never block on the warning. An in-app update restart is never
-  deferred behind the warning either: the platform installer is spawned before
-  `app.quit()` and aborts once the app outlives its wait window, so the
-  update-triggered quit must run the ordered shutdown immediately — the user
-  already committed to the restart by choosing that action.
+  application-menu Quit item. If tray-hidden, confirm the main window is restored.
+  2) Verify the themed in-app confirmation, Cancel as initial focus, and distinct
+  title/body. While it is open, issue a second Quit request and verify the same
+  decision remains pending: no duplicate dialog and no shutdown bypass. Exercise
+  Escape and a backdrop click; confirm the window, tray, host-core, and sidecar
+  remain. 3) Repeat and Confirm; verify ordered shutdown. 4) On Windows/Linux
+  with close behavior unset, close the window. Verify the themed D230 dialog
+  offers Cancel / Close to tray / Quit: cancel leaves the preference unset, and
+  choosing Quit causes no second dialog. 5) Launch with `PI_DESKTOP_BOOT_PROBE=1`
+  (and supervision/capture equivalents) and confirm `app.quit()` exits without a
+  dialog. 6) On packaged Windows NSIS or Linux AppImage, restart to install an
+  update; confirm no quit warning appears and the installer completes upgrade
+  and relaunch.
+- **Expected**: Accidental explicit quit is cancellable. Repeated quit requests
+  cannot duplicate or bypass an outstanding confirmation; Cancel clears the
+  pending decision so a later quit asks again. Tray Quit presents the dialog
+  even when the main window was hidden. A D230 Quit is not re-confirmed. When the
+  renderer is unavailable, crashes, or fails to answer, the bounded native
+  fallback is used; failure to show it does not hold shutdown. Probes never
+  block on the warning. An in-app update restart is never deferred: the installer
+  is spawned before `app.quit()` and aborts if the app stays alive past its wait
+  window, so that quit goes directly into ordered shutdown.
 - **Specs linked**: `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`, `08-meta/decisions-log.md` (D216, D230,
-  D363), ADR 0022
+  D363), ADR 0022, ADR 0090
 - **Acceptance**: A (app startup), Quality
 - **Milestone**: M5
-- **Status**: Unit-covered (`close-behavior-tray.test.mjs` asserts the
-  probe and update-restart exemptions; `auto-update.test.mjs` asserts the
-  install latch is set before `quitAndInstall`); native dialog journey Draft
-  (run only in a capable environment when this surface changes)
+- **Status**: Broker, renderer user path, Main close/quit runtime, and pending
+  shutdown lifecycle covered (`lifecycle-dialog-broker.test.mjs`,
+  `lifecycle-confirmation-dialog-user-path.test.mjs`,
+  `lifecycle-close-behavior-runtime.test.mjs`, `close-behavior-tray.test.mjs`,
+  `shutdown-regenerate-persistence.test.mjs`). Full application shutdown and
+  packaged update journey remains Draft; run in a capable release environment
+  when lifecycle wiring changes.
 
 #### E2E-067A: Prerelease install discovers newer stable release (D120)
 
@@ -16099,14 +16113,14 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 #### E2E-LAYOUT-sidebar-project-group-fold
 
 - **Preconditions**: Five retained sidebar project groups, seeded through the
-  host: one holding five sessions across four date buckets, one holding a single
-  session, one holding none, and one holding ten pinned sessions.
+  host: one holding five sessions with recent and old reply dates, one holding
+  a single session, one holding none, and one holding ten pinned sessions.
   A fifth group has twelve unpinned sessions for the project history pager.
   `prefers-reduced-motion` is unset.
 - **Steps**:
-  1. Inspect the groups: body layering, row and date-label counts, the empty
-     state, the tail each expanded group contributes to the next one, and the
-     non-project lists' budgets.
+  1. Inspect the groups: body layering, row and per-row date counts, no time
+     headings, the empty state, the tail each expanded group contributes to
+     the next one, and the non-project lists' budgets.
   2. Collapse the multi-row group with a real pointer click on its directory row —
      scrolled into view and confirmed to hit that button — and read the group
      body's height, opacity, resolved `grid-template-rows`, and the distance to
@@ -16134,7 +16148,9 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   reduced motion both endpoints are kept and the travel is dropped. The pinned
   list holds eight rows inside `min(233px, 30vh)` and scrolls to its remaining
   rows, and the standalone list keeps its flex column and 146px budget. The group
-  indent, ordering, and workspace state are unchanged.
+  indent, ordering, and workspace state are unchanged. The five seeded project
+  sessions remain in one flat list with no time headings and each has its own
+  date label.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/07-ui-design-system.md` §6.1 and
   §13, `04-ux/08-component-spec.md` §6.2, `08-meta/decisions-log.md`
   (2026-09-16, sidebar list rhythm and project-group fold)
@@ -16155,8 +16171,10 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   a current workspace; built desktop with isolated data and profile directories.
 - **Steps**: In dark and light themes, select a project conversation, hover its
   project title and an unselected conversation, then hover the selected row.
-  Exercise the window-blur handler, drop-target styling, project action hover
-  and keyboard Tab/Shift+Tab focus. Fold and reopen its group. Select pinned and
+  Check that a project session date is visible at rest and replaced by its
+  action on hover and focus. Exercise the window-blur handler, drop-target
+  styling, project action hover and keyboard Tab/Shift+Tab focus. Fold and
+  reopen its group. Select pinned and
   standalone conversations. Open Settings and return. Enable reduced motion and
   inspect both row transition durations. In a separate twelve-session project,
   load the remaining two sessions, fold and reopen the group, and verify only
@@ -16169,10 +16187,11 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   retains an outline, action buttons retain local feedback, drop-target paint
   wins over hover, and blur releases hover without clearing selection. Settings
   replaces sidebar navigation, and returning restores conversation and workspace
-  context without a second selected row. Loading more sessions reveals all
-  twelve; folding and reopening restores the initial ten and the two-session
-  remainder control. Rendered component tests additionally cover no selected
-  session, a pending destination and non-chat page state.
+  context without a second selected row. Project session rows show dates at rest
+  and reveal actions in their place on hover and focus. Loading more sessions
+  reveals all twelve; folding and reopening restores the initial ten and the
+  two-session remainder control. Rendered component tests additionally cover no
+  selected session, a pending destination and non-chat page state.
 - **Specs linked**: `04-ux/01-ui-ia.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md` §9.1c
 - **Acceptance**: C, D, Quality

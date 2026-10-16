@@ -191,10 +191,12 @@ Outer frame that positions Topbar, Sidebar, MainChat, and WorkPanel. Owns resize
   focused Windows taskbar button also uses native minimize; a second click
   restores/focuses the same window, while clicking a covered window brings it
   to the front. Tray activation restores and focuses tray-hidden windows; Quit
-  remains explicit and, except for automated probes, confirms with a native
-  warning before shutdown (D363). On macOS the tray uses a transparent monochrome template
-  of the PI mark rather than the rounded application tile, so it remains
-  readable in the menu bar.
+  remains explicit and, except for automated probes, restores a tray-hidden main
+  window before showing a themed confirmation with Cancel focused. Escape or a
+  backdrop click cancels. If the main renderer is unavailable, a native warning
+  is the bounded fallback before shutdown (D363). On macOS the tray uses a
+  transparent monochrome template of the PI mark rather than the rounded
+  application tile, so it remains readable in the menu bar.
 - Windows/Linux do not render File/Edit/View/Window/Help in the titlebar and
   do not reserve left-side space for an application menubar. F10 and
   Shift+F10 remain available to focused content.
@@ -593,9 +595,9 @@ visually distinct from list content.
   and Open session path (the session scratch directory in the system file
   manager).
 - Pinned conversations appear once in a global section above Sessions and
-  Projects, independent of date buckets, project collapse, retained tabs, and
-  each project's ten-row history limit. Each pin shows its project display
-  name (full path on hover), or Temporary space for a path-less conversation.
+  Projects, independent of project session dates, project collapse, retained
+  tabs, and each project's ten-row history limit. Each pin shows its project
+  display name (full path on hover), or Temporary space for a path-less conversation.
   The section is omitted when empty and scrolls within `min(233px, 30vh)` when
   needed. Its rows reuse normal selection, status, hover, and overflow actions.
 - Pinning moves the existing row into that section; unpinning returns it to
@@ -737,7 +739,7 @@ controls.
 | Project archive | omitted from default view; restorable from archived view |
 | Project delete | the row-menu danger action always opens a confirmation dialog naming the project and session count; X, Cancel, Escape, and backdrop dismiss without changes; explicit confirmation stops listed running sessions before removing the durable project row, owned sessions/transcripts, and project memory; the folder is never deleted; deleting a root of a stored multi-folder project group is refused until the root is detached through Edit project. Chats on a detached root remain available as a standalone project. A path the host no longer knows is still removed from the list. |
 | Project memory | row-menu editor reads and saves a compact list of titled or untitled memory cards for the exact project path; cards can be added, edited, and removed, the context is available in later chats, and it is never a higher-priority instruction |
-| Session list | exact-path matches only; no basename grouping; the latest ten unpinned sessions appear initially, Load more reveals the remaining history, and collapsing the project clears that expanded-list state so the next expansion returns to the initial ten |
+| Session list | exact-path matches only; no basename grouping; the latest ten unpinned sessions appear initially without time-group headings, and Load more reveals the remaining history; each project row shows the title, a divider, and a localized last-reply age through seven calendar days or a concrete date afterward; hovering or focusing the row replaces that date with session actions; collapsing the project clears the expanded-list state so the next expansion returns to the initial ten |
 | Active group | exactly one group reflects the selected host workspace |
 | Task state | In-progress, selected, completed, and failed indicators update by session without replacing the visible transcript; precedence is in-progress, selected, then terminal outcome |
 

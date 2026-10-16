@@ -143,21 +143,20 @@ recency only breaks ties between equally relevant matches.
   restores/focuses the same window, while clicking the entry for a merely
   covered window keeps the normal bring-to-front behavior (D252 / ADR 0117).
   macOS native minimize remains tray-resident. Windows/Linux close behavior is user-configurable
-  (ADR 0090): an unset preference asks once via a native prompt (Cancel / Close
-  to tray / Quit); `tray` hides the window under that same tray icon, whose
-  click restores the window; `quit` exits the app. Close behavior never creates
-  or destroys the tray — D216 owns it, so the icon is resident under either
-  choice. The choice is persisted, revisitable in Settings → General, and
-  applied by both the close button and the close shortcut. Explicit quit
-  (Cmd+Q, application-menu Quit, tray Quit) is a separate confirm step
-  (D363): Cancel leaves the app running; Confirm runs the ordered shutdown.
-  A D230 window-close Quit does not ask again. Automated boot, supervision,
-  and capture probes skip the dialog, as does the restart that installs an
-  already-downloaded update — its installer is already running and gives up
-  when the app stays alive. macOS keeps the
-  native Dock lifecycle (close keeps the app in the Dock; activating recreates
-  the window). The bounds watchdog never restores a minimized or tray-hidden
-  window.
+  (ADR 0090): an unset preference asks once via a themed in-app dialog (Cancel / Close to tray / Quit).
+  If the renderer is unavailable, the native dialog remains the bounded fallback. Escape and a
+  backdrop click cancel; Cancel is initially focused and leaves the preference unset. `tray` hides
+  the window under that same tray icon, whose click restores the window; `quit` exits the app.
+  Close behavior never creates or destroys the tray — D216 owns it, so the icon is resident under
+  either choice. The choice is persisted, revisitable in Settings → General, and applied by both
+  the close button and the close shortcut. Explicit quit (Cmd+Q, application-menu Quit, tray Quit)
+  is a separate themed confirmation step (D363): a tray-hidden main window is restored first;
+  Escape, backdrop click, or Cancel leaves the app running, while Confirm runs the ordered shutdown.
+  A D230 window-close Quit does not ask again. Automated boot, supervision, and capture probes skip
+  the dialog, as does the restart that installs an already-downloaded update — its installer is
+  already running and gives up when the app stays alive. macOS keeps the native Dock lifecycle
+  (close keeps the app in the Dock; activating recreates the window). The bounds watchdog never
+  restores a minimized or tray-hidden window.
 
 ### 1.5.1 Tray-resident and taskbar minimize
 
@@ -297,10 +296,11 @@ may be retained while exactly one workspace supplies the visible shell context.
   ahead of the manual order; projects without an assigned order fall back to
   a stable path order until they are moved.
 - Each project group shows the ten most-recent rows in the active sort order
-  by default; the remaining sessions fold behind a **Load N more…** control
-  (the same affordance used for time-grouped overflow). Selecting it expands
-  the full time-grouped list, and the expanded state is per-group, for the
-  current session only, and not persisted.
+  by default; the remaining sessions fold behind a **Load N more…** control.
+  The expanded list remains flat. Each project session row shows its title and
+  localized last-reply age through seven calendar days, then a concrete date;
+  hover or keyboard focus replaces the date with the session actions. Expanded
+  state is per-group, for the current session only, and not persisted.
 - Presentation changes are saved best-effort. Storage failure must not block
   project activation, session selection, or agent execution.
 
