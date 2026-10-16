@@ -9,7 +9,7 @@ import { orderSystemRows, SystemTranscriptJournal } from "./system-transcript-jo
 import { planWorkspaceRequiredResult } from "./plan-workspace-error.js";
 import { accountModelStream } from "./request-usage.js";
 import {
-  contractModeWithholdsTool,
+  contractModeAllowsBuiltin,
   modeToolDenial,
   retainModeToolDeclaration,
   withModeExecutionGuard,
@@ -4039,25 +4039,15 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     );
   }
 
-  /**
-   * What the model may see in a contract mode. A withheld name leaves the
-   * catalog and is refused at execute time; every other name is declared, and
-   * the host permission path decides whether the call runs. Withholding is
-   * reserved for calls the mode can never permit, so `ToolSearch` stays and an
-   * unclassifiable MCP tool can still be discovered and then approved on its
-   * own card.
-   */
   private isToolAllowedInMode(name: string): boolean {
-    if (!proposalKindForMode(this.mode)) return true;
-    if (contractModeWithholdsTool(name)) return false;
-    // A trusted-extension tool runs in this process, so the host permission
-    // path never sees the call and cannot gate it. A contract mode therefore
-    // cannot offer one: withholding it is the only boundary available.
+    const kind = proposalKindForMode(this.mode);
+    if (!kind) return true;
+    // Extension tools execute locally, outside the host permission path.
     if (this.isExtensionTool(name)) return false;
-    // A plugin tool is admitted only when the plugin runtime will also hold it to
-    // a declared action list. One without a list is refused by the host, so
-    // declaring it would only offer the model a call that cannot succeed.
-    return !name.startsWith("plugin_") || this.isPlanSafePluginTool(name);
+    return contractModeAllowsBuiltin(name)
+      || name === SUBMIT_TOOL_NAMES[kind]
+      || name.startsWith("mcp_")
+      || (name.startsWith("plugin_") && this.isPlanSafePluginTool(name));
   }
 
   private isCoreTool(name: string): boolean {
@@ -4077,11 +4067,7 @@ Do not invent objections or turn speculative risks into blockers. Stop when the 
     }
     if (this.mode === "agent") return AGENT_CORE_TOOL_NAMES.has(name);
     if (!proposalKindForMode(this.mode)) return CHAT_CORE_TOOL_NAMES.has(name);
-    // A contract mode declares everything it has not withheld. An MCP tool is
-    // unclassifiable, so it must be visible for its own card to be reachable;
-    // deferring it behind ToolSearch would leave the approval path unreachable
-    // for the tools that need it most.
-    return !contractModeWithholdsTool(name);
+    return contractModeAllowsBuiltin(name) || this.isPlanSafePluginTool(name);
   }
 
   private activeTools(): AgentTool[] {

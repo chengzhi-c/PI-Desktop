@@ -258,23 +258,21 @@ async function scenario105(binary, tempRoot) {
       assertToolFailure(result, code);
     }
     const marker = join(ctx.workspace, "plan-bash-marker.txt");
-    const bash = await ctx.host.call(
-      "tools.execute",
-      bashParams(
-        session.id,
-        "e2e105-bash",
-        shell,
-        planBashCommand(shell.dialect, marker),
-      ),
-    );
+    const params = bashParams(session.id, "e2e105-bash", shell, planBashCommand(shell.dialect, marker));
+    const pending = ctx.host.call("tools.execute", params);
+    await waitFor(() => ctx.host.matchingNotifications("permissions.request").length === 1, 5_000, "Plan Bash approval");
+    assert(!existsSync(marker), "Plan Bash ran before approval");
+    const request = ctx.host.matchingNotifications("permissions.request")[0];
+    await ctx.host.call("permissions.resolve", { requestId: request.params.requestId, decision: "allow-session" });
+    const bash = await pending;
     assertToolSuccess(bash, "e2e105-bash");
     assert(bash.commandShellId === shell.id, `Bash shell identity mismatch: ${shortJson(bash)}`);
     assert(String(bash.content?.stdout || "").includes("plan-auto"), shortJson(bash));
     assert(existsSync(marker), "Plan Bash did not execute its marker command");
-    assert(
-      ctx.host.matchingNotifications("permissions.request").length === 0,
-      "Plan policy scenario emitted a permission prompt",
-    );
+    ctx.host.clearNotifications();
+    const granted = await ctx.host.call("tools.execute", { ...params, toolCallId: "e2e105-bash-granted" });
+    assertToolSuccess(granted, "e2e105-bash-granted");
+    assert(ctx.host.matchingNotifications("permissions.request").length === 0, "Session grant did not suppress the second prompt");
     const current = await ctx.host.call("session.get", { id: session.id });
     assert(current.session?.mode === "plan", `forged mode changed session: ${shortJson(current)}`);
     return `mode=plan read=ok denied=4 shell=${shell.id}/${shell.dialect}`;

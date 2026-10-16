@@ -110,8 +110,7 @@ pub struct PendingPermission {
     pub created_at: String,
 }
 
-/// How a contract mode admits a tool that `PermissionManager::plan_mode_allows`
-/// accepted.
+/// Contract admission is independent of risk and automatic permission modes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContractAdmission {
     /// Fall through to the ordinary permission path.
@@ -149,19 +148,7 @@ impl PermissionManager {
         }
     }
 
-    /// The builtin tools a contract mode may run without a card.
-    ///
-    /// This is an allowlist, not a denylist, and that is the point: a builtin
-    /// added later is denied until someone decides what it does, so the mode
-    /// cannot widen by omission. Every entry is read-only — it inspects the
-    /// workspace, asks the user a question, or hands the negotiation back to
-    /// the host. `new_context` and `ToolSearch` never reach this gate (they are
-    /// sidecar-side) but are listed so the two sides of the bridge agree.
-    ///
-    /// `Write`, `Edit`, `TodoWrite`, `GenerateImages` and the delegation tools
-    /// stay out: they change files, session state, or spawn work. A contract
-    /// mode denies them outright, and no permission mode or session grant
-    /// re-enables them.
+    // Unclassified builtins stay denied; remote tools are gated separately.
     const CONTRACT_MODE_READ_ONLY: [&str; 7] = [
         "Read",
         "Glob",
@@ -171,42 +158,11 @@ impl PermissionManager {
         "new_context",
         "ToolSearch",
     ];
-
-    /// Whether a contract mode lets a call reach the ordinary permission path.
-    ///
-    /// A `true` answer is not a grant: the caller still applies risk,
-    /// permission mode, grants, and the external-path rule. A `false` answer is
-    /// a hard deny that no permission mode, session grant, or scratch path can
-    /// re-enable.
-    ///
-    /// This is the hard-deny question only. `Bash` and an unclassifiable MCP
-    /// tool answer `false` here and `Approval` from [`Self::contract_admission`],
-    /// so a caller that needs to distinguish a mode denial from a card the user
-    /// then refused must ask `contract_admission`, not this.
-    pub fn plan_mode_allows(tool_name: &str) -> bool {
-        Self::CONTRACT_MODE_READ_ONLY.contains(&tool_name)
-    }
-
-    /// The contract modes' own gate.
-    ///
-    /// A read-only builtin falls through to the ordinary permission path, and
-    /// the one submit tool that belongs to this mode is added by the runtime.
-    /// `Bash` is gated rather than parsed: what a command does is decided by
-    /// the shell that runs it, and any static reading of the string would be
-    /// wrong in the permissive direction, so it takes a card every time.
-    ///
-    /// An MCP tool carries no classification signal at all — the name means
-    /// nothing and a server's self-declared annotation is untrusted — so it
-    /// also takes a card rather than running unread. A plugin tool does carry
-    /// one: a non-empty `planSafeActions` list means the plugin runtime already
-    /// restricts it to actions the user accepted, so it falls through.
-    /// Without that list it is refused, because the plugin runtime refuses it
-    /// too and an approval card the callee then ignores would be theater.
     pub fn contract_admission(
         tool_name: &str,
         plan_safe_actions: Option<&[String]>,
     ) -> ContractAdmission {
-        if Self::plan_mode_allows(tool_name) {
+        if Self::CONTRACT_MODE_READ_ONLY.contains(&tool_name) {
             return ContractAdmission::Allowed;
         }
         if tool_name == "Bash" || tool_name.starts_with("mcp_") {
@@ -274,6 +230,9 @@ impl PermissionManager {
             requires_external_path_permission,
             plan_safe_actions,
         } = params;
+        let has_session_grant = session_grants
+            .get(session_id)
+            .is_some_and(|grants| grants.iter().any(|name| name == tool_name));
         // A contract mode decides first, and that decision precedes low-risk
         // classification, auto, grants, and scratch paths, so none of them can
         // re-enable what it denied (D198, and Goal shares Plan's gate).
@@ -282,7 +241,9 @@ impl PermissionManager {
                 ContractAdmission::Denied => return Some(PermissionDecision::Deny),
                 // No permission mode short-circuits an unclassified call: an
                 // opaque tool is exactly the case where `auto` must not decide.
-                ContractAdmission::Approval => return None,
+                ContractAdmission::Approval => {
+                    return has_session_grant.then_some(PermissionDecision::AllowSession);
+                }
                 ContractAdmission::Allowed => {}
             }
         }
@@ -291,11 +252,7 @@ impl PermissionManager {
             if permission_mode == "auto" {
                 return Some(PermissionDecision::AllowOnce);
             }
-            if session_grants
-                .get(session_id)
-                .map(|g| g.iter().any(|t| t == tool_name))
-                .unwrap_or(false)
-            {
+            if has_session_grant {
                 return Some(PermissionDecision::AllowSession);
             }
             return None;
@@ -313,11 +270,7 @@ impl PermissionManager {
         if mode_allows {
             return Some(PermissionDecision::AllowOnce);
         }
-        if session_grants
-            .get(session_id)
-            .map(|g| g.iter().any(|t| t == tool_name))
-            .unwrap_or(false)
-        {
+        if has_session_grant {
             return Some(PermissionDecision::AllowSession);
         }
         None
@@ -574,15 +527,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn plan_mode_denies_unavailable_tools_regardless_of_permission_mode() {
-        let pm = PermissionManager::default();
-        for mode in ["ask", "accept-edits", "auto"] {
-            let d = pm.evaluate_auto_with_permission_mode("s", "Write", "plan", mode, &no_grants());
-            assert_eq!(d, Some(PermissionDecision::Deny), "plan + {mode}");
-        }
-    }
-
     /// A contract mode denies what changes state, whatever the permission mode
     /// would otherwise allow. `auto` and `accept-edits` cannot re-enable it,
     /// and neither can a session grant.
@@ -618,21 +562,40 @@ mod tests {
         }
     }
 
-    /// Bash is gated, not parsed. Reading the command string would be wrong in
-    /// the permissive direction, so a contract mode takes a card every time
-    /// instead of letting `auto` decide what the shell may do.
     #[test]
-    fn contract_modes_always_take_a_card_for_bash() {
+    fn contract_modes_require_approval_unless_the_tool_has_a_session_grant() {
         let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["Bash".to_string()]);
+        let grants = HashMap::from([(
+            "s".to_string(),
+            vec!["Bash".to_string(), "mcp_srv_tool".to_string()],
+        )]);
         for contract in ["plan", "goal"] {
             for mode in ["ask", "accept-edits", "auto"] {
-                assert_eq!(
-                    pm.evaluate_auto_with_permission_mode("s", "Bash", contract, mode, &grants),
-                    None,
-                    "{contract} + {mode} must prompt even with a session grant"
-                );
+                for tool in ["Bash", "mcp_srv_tool"] {
+                    assert_eq!(
+                        pm.evaluate_auto_with_permission_mode(
+                            "s",
+                            tool,
+                            contract,
+                            mode,
+                            &no_grants()
+                        ),
+                        None,
+                        "{contract} + {mode} must prompt for {tool} without a grant"
+                    );
+                    assert_eq!(
+                        pm.evaluate_auto_with_permission_mode("s", tool, contract, mode, &grants),
+                        Some(PermissionDecision::AllowSession),
+                        "{contract} + {mode} must honor the grant for {tool}"
+                    );
+                    assert_eq!(
+                        pm.evaluate_auto_with_permission_mode(
+                            "other", tool, contract, mode, &grants
+                        ),
+                        None,
+                        "{contract} + {mode} must not share {tool}'s grant across sessions"
+                    );
+                }
             }
         }
     }
@@ -687,7 +650,6 @@ mod tests {
                 );
             }
         }
-        assert!(!PermissionManager::plan_mode_allows("TodoWrite"));
     }
 
     #[test]
@@ -819,32 +781,6 @@ mod tests {
         let other =
             pm.evaluate_auto_with_permission_mode("s", "mcp_srv_other", "agent", "ask", &grants);
         assert!(other.is_none(), "grant is scoped to the exact tool name");
-    }
-
-    /// An MCP tool has no classification signal, so a contract mode routes it
-    /// to a card. The grant below is deliberately present and deliberately not
-    /// enough: `auto` must not stand in for a decision about a tool whose name
-    /// is all the host knows.
-    #[test]
-    fn contract_modes_route_unclassified_mcp_tools_to_a_card() {
-        let pm = PermissionManager::default();
-        let mut grants = HashMap::new();
-        grants.insert("s".to_string(), vec!["mcp_srv_tool".to_string()]);
-        for contract in ["plan", "goal"] {
-            for mode in ["ask", "accept-edits", "auto"] {
-                assert_eq!(
-                    pm.evaluate_auto_with_permission_mode(
-                        "s",
-                        "mcp_srv_tool",
-                        contract,
-                        mode,
-                        &grants
-                    ),
-                    None,
-                    "mcp tool must prompt in {contract} + {mode}"
-                );
-            }
-        }
     }
 
     /// The escape hatch is a declaration, not a default: a plugin tool is

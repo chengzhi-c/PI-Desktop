@@ -1619,7 +1619,7 @@ task-candidate E2E 从请求工作树运行，但使用主工作区已经准备�
 
 - **先决条件**：一个绑定项目的 Agent 会话；一个用户配置的 stdio MCP 服务器，其工具列表把某个工具标注为只读/低风险。
 - **步骤**：1) 会话处于 `ask` 时，让代理调用该 MCP 工具。2) 以“允许一次”回应卡片后再次调用，再以“本会话允许”回应并第三次调用。3) 在新会话中切到 `accept-edits` 并重复调用。4) 切到 `auto` 调用。5) 依次切到 Plan、Goal 调用。
-- **预期**：在 `ask` 与 `accept-edits` 下，每次调用都显示审批卡片，原因为 "MCP server tool requires approval"，风险为 `medium`，与服务器自行声明的标注无关。“允许一次”只覆盖该次调用；“本会话允许”只在该会话内对同一 `mcp_<serverId>_<tool>` 名称不再提示，不覆盖该服务器的其他工具。`auto` 不显示卡片直接执行。Plan 与 Goal 即使存在会话授权也拒绝。
+- **预期**：在 `ask` 与 `accept-edits` 下，每次调用都显示审批卡片，原因为 "MCP server tool requires approval"，风险为 `medium`，与服务器自行声明的标注无关。“允许一次”只覆盖该次调用；“本会话允许”只在该会话内对同一 `mcp_<serverId>_<tool>` 名称不再提示，不覆盖该服务器的其他工具。Agent 的 `auto` 不显示卡片直接执行。Plan 与 Goal 在所有权限模式下都需确认，已有同一工具的会话授权除外。
 - **关联规格**：`03-runtime/03-tools-and-permissions.md`、`05-security/01-security.md`、D640、ADR `mcp-tool-approval-risk`
 - **状态**：已有单元测试（host-core `permissions.rs` MCP 风险与模式测试）；桌面流程待验证
 
@@ -4232,17 +4232,15 @@ eleven-tool-round desktop paths are verified by
   Auto 下运行 Bash。
 - **预期**：无论伪造模式、授权还是 Auto，Plan 都拒绝 Write/Edit 以及只读清单之外的任何内置
   工具；未声明 `planSafeActions` 的插件工具以 `PLUGIN_DISABLED_IN_PLAN` 被拒绝；MCP 工具和
-  Bash 在**每一种**权限模式下（含 Auto）各自弹出权限卡，批准后调用才运行。运行时仍为
-  1 pi Agent，且所有拒绝都会经过审核。
+  Bash 在**每一种**权限模式下（含 Auto）各自弹出权限卡，批准后调用才运行。精确工具名的会话授权
+  免去重复确认，但不授权其他工具或会话。运行时仍为同一 pi Agent，且所有拒绝都会经过审计。
 - **链接规格**：`03-runtime/02-agent-runtime.md`，
   `03-runtime/03-tools-and-permissions.md`、`03-runtime/05-host-core-rust.md`、
   `03-runtime/06-host-rpc-protocol.md`、`05-security/01-security.md`、ADR 0053、ADR 0330
 - **接受**：E（工具和权限）、安全
 - **里程碑**：M6
-- **状态**：自动（2026-08-04 通过）：`test:e2e:plan` 加 host-core
-  permission/policy 和代理运行时工具组合测试。Bash 与 MCP 的权限卡行为由
-  `permissions::tests` 以及两个 `rpc::tests::{plan,goal}_authorization*` 用例覆盖；
-  `test:e2e:plan` 尚未针对 ADR 0330 的姿态重跑。
+- **状态**：自动化：`test:e2e:plan` 覆盖批准前不执行和会话授权复用；host-core
+  授权测试及 agent-runtime MCP 选择测试覆盖权限与目录边界。
 
 #### E2E-106：SubmitPlan 拒绝进入可编辑计划并重新提交新工件
 

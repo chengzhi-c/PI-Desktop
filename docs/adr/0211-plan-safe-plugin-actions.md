@@ -60,11 +60,6 @@ the model knows which actions it can actually call. The full plugin tool
 is still available to the renderer (skill catalog, plugin page); the
 filter is on the agent-visible tool list, not on registration.
 
-*(Amended by ADR 0330 §5: a contract mode withholds only what it can never
-permit. A plugin tool without `planSafeActions` is still withheld, because the
-host denies it, but that is no longer the only reason a name can leave the
-catalog — an MCP tool stays declared so its approval card is reachable.)*
-
 ### 3. Runtime forwards the declaration to host-core
 
 When the runtime calls `tools.execute` for a `plugin_*` tool it includes
@@ -75,20 +70,12 @@ in the `plugins.execute` notification alongside the session mode.
 ### 4. Host-core admits plan-safe plugin tools in contract modes
 
 `crates/host-core/src/permissions.rs` retains the existing contract-mode
-hard deny (`plan_mode_allows`) for `Write`, `Edit`, unknown tools, and
+hard deny (`contract_admission`, ADR 0330) for `Write`, `Edit`, unknown builtins, and
 plugin tools that arrive without `planSafeActions`. A plugin tool that
 arrives with a non-empty `planSafeActions` list now passes the contract
 gate. The list does not change any other rule: low-risk auto-allow, the
 external-path prompt, session grants, and the `auto` mode permission
 posture all apply the same way they do for any Agent-mode plugin call.
-
-*(Amended by ADR 0330: the gate is now `contract_admission`, and it answers with
-three outcomes instead of two. `Write`, `Edit`, and every builtin outside the
-read-only set are denied; `Bash` and an MCP tool take a permission card, because
-neither carries a usable classification signal; a `planSafeActions` plugin tool
-reaches the ordinary permission path exactly as described above. "Unknown tools"
-are denied because the read-only set is an allowlist, not because a name list
-happens to omit them.)*
 
 ### 5. Plugin-runtime enforces the action restriction
 
@@ -133,19 +120,14 @@ process-wide and macOS spends `Cmd+W` on its own close-window command.)*
 
 - Plan and Goal modes can inspect external resources through any plugin
   whose author opts in. The bundled Browser plugin is the first
-  beneficiary; MCP tools can do the same with the same declaration.
-  *(Amended by ADR 0330: an MCP tool needs no declaration — it takes an
-  approval card instead, so a server whose tools are read-only is usable
-  without the user maintaining a list.)*
+  beneficiary. User MCP tools follow ADR 0330's approval policy; plugin-contributed
+  MCP tools have no plan-safe declaration and remain unavailable in Plan/Goal.
 - Plugin authors remain responsible for declaring exactly which actions
   are read-only. A wrong declaration fails at plugin registration, not
   at the user's prompt.
 - The contract modes' hard deny for `Write`, `Edit`, and unknown tools
   is unchanged. A plugin that does not declare `planSafeActions` keeps
   the ADR 0052 / ADR 0053 behavior.
-  *(Amended by ADR 0330: still true, and the mechanism is now an explicit
-  read-only allowlist. `planSafeActions` is no longer how a plugin becomes
-  visible in Plan and Goal; it is how a plugin tool is admitted without a card.)*
 - The defense-in-depth check in the plugin-runtime means a bug in the
   runtime or host-core cannot escalate a Plan call into a mutation: the
   plugin rejects it itself.

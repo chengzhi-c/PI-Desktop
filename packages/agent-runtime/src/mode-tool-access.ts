@@ -4,49 +4,17 @@ import type { Mode } from "@pi-desktop/shared";
 /** Known editing/delegation names stay declared across contract-mode changes. */
 const RETAINED_MODE_TOOLS = new Set(["Write", "Edit", "Task", "TaskWait", "TaskList", "TaskStop"]);
 
-/**
- * A contract mode withholds tools whose only purpose is to change state. They
- * stay declared so a strict gateway never sees an undeclared call, and the
- * execution guard below refuses them, but the model is never offered them as a
- * real option.
- *
- * Every other tool is declared, including one this module cannot classify: an
- * MCP or plugin tool reaches the model and the host permission path decides
- * whether the call runs. Withholding is reserved for a name the mode can never
- * permit, because a withheld tool is one the model cannot discover at all.
- *
- * The host enforces the same posture from the other side in
- * `PermissionManager::contract_admission`. A name denied here must also be
- * denied there, or the model gets a tool it can never use.
- */
-const CONTRACT_MODE_WITHHELD = new Set([
-  "Write",
-  "Edit",
-  "TodoWrite",
-  "Task",
-  "TaskWait",
-  "TaskList",
-  "TaskStop",
-  // Agent-only or state-changing local tools. They are already absent from a
-  // contract mode's builtin list, so listing them changes no observable
-  // behavior today; it keeps this set the single answer to "what does a
-  // contract mode refuse" instead of leaving the agreement to coincidence.
-  "GenerateImages",
-  "PluginCheck",
-  "PluginScaffold",
-  "PluginPack",
-  "Skill",
-  "ScheduledTaskCreate",
-  "ScheduledTaskUpdate",
-  "ScheduledTaskDelete",
+// Explicit classification also denies stale references to local Agent-only tools.
+const CONTRACT_MODE_BUILTINS = new Set([
+  "Read", "Glob", "Grep", "BrowserPreview", "Bash", "asktool", "new_context", "ToolSearch",
 ]);
 
 export function retainModeToolDeclaration(name: string): boolean {
   return RETAINED_MODE_TOOLS.has(name);
 }
 
-export function contractModeWithholdsTool(name: string): boolean {
-  return CONTRACT_MODE_WITHHELD.has(name);
+export function contractModeAllowsBuiltin(name: string): boolean {
+  return CONTRACT_MODE_BUILTINS.has(name);
 }
 
 export function modeToolDenial(name: string, mode: Mode): string {

@@ -12,12 +12,12 @@
 |---|---|
 | 默认模式 | Agent |
 | Agent 工具 | 读取 / Glob / Grep / 写入 / 编辑 / Bash + 已注册的插件工具 |
-| Plan 工具 | 读取 / Glob / Grep / BrowserPreview / asktool / SubmitPlan，以及经权限卡放行的 MCP 工具和 `planSafeActions` 插件工具 |
-| Goal 工具 | 读取 / Glob / Grep / BrowserPreview / asktool / SubmitGoal，以及经权限卡放行的 MCP 工具和 `planSafeActions` 插件工具 |
+| Plan 工具 | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitPlan，以及可发现的 MCP 工具和声明 `planSafeActions` 的插件；普通权限规则仍适用 |
+| Goal 工具 | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitGoal，以及可发现的 MCP 工具和声明 `planSafeActions` 的插件；普通权限规则仍适用 |
 | Plan 和 Goal 硬拒绝 | 写入 / 编辑 / TodoWrite / GenerateImages / 委派工具 / 另一类的提交工具。不在只读清单内的内置工具在分类前一律拒绝 |
-| Plan 和 Goal 的 Bash | 始终弹出权限卡；权限模式不会跳过它 |
-| Plan 和 Goal 的未分类工具 | MCP 工具没有任何分类信号，因此弹出权限卡而不是未经审查地运行；`plugin_` 工具需要非空的 `planSafeActions` 列表 |
-| 插件 `planSafeActions` | 非空的 `action` 字符串数组；host 放行已列出的工具，plugin-runtime 拒绝列表外的任何动作（ADR 0211） |
+| Plan 和 Goal 的 Bash | 包括 `auto` 在内均需确认，已有精确工具名的会话授权除外 |
+| Plan 和 Goal 的未分类工具 | MCP 工具需要确认或精确工具名的会话授权；`plugin_` 工具需要非空 `planSafeActions` |
+| 插件 `planSafeActions` | 非空的 `action` 字符串数组；运行时隐藏无列表工具，host 应用普通权限，plugin-runtime 拒绝未列出的动作（ADR 0211） |
 | 本地权限确认 | 无自动截止时间；必须明确决定或取消 |
 | 允许会话范围 | 工具名称 |
 | 重击风格 | 非交互式；具有流输出的选定主机目录外壳 |
@@ -473,8 +473,8 @@ Agent 模式下 `auto` 自动允许。
   在两种操作模式下均可用。
 - Plan 保留权限模式选择器。 `Bash` 在每种权限模式下都需要确认，因此该选择器不改变
   Plan 是否可以运行命令，只影响其余工具的行为。Plan 是规划意图，而不是严格的只读安全配置。
-- `allow-session` 赠款继续在 `ask` 下运作，范围仅限于
-  会议；在 `BrowserPreview`/`ask` 下，根本不需要它们。
+- `allow-session` 仅适用于同一会话的精确工具名，也会在 `accept-edits` 和 `auto` 下
+  免去 Plan/Goal 的 Bash、MCP 重复确认。
 - 暂存目录写入 (D114) 在每种模式下都保持无提示。
 - UI：设置→分段全局默认；输入框在中显示每个会话的芯片
   Agent、Plan 和 Goal 的菜单提供了三种有效模式，无需
@@ -545,9 +545,9 @@ MVP 可以通过写入 SQLite 或日志文件来启动。
   host 不读取命令字符串来判定；因此 `auto` 不能代替用户的决定。`Bash` 的会话授权仍会抑制
   该会话后续的重复确认。
 - MCP 工具没有任何分类信号——名称说明不了什么，服务器自报的风险标注也不可信——因此契约模式
-  把它交给权限卡，而不是让 `auto` 未经审查地放行。该工具对模型保持可见，权限卡才够得着。
+  把它交给权限卡，而不是让 `auto` 未经审查地放行。工具仍可通过 ToolSearch 或显式选择发现。
 - 当 `plugin_` 工具声明了非空的 `planSafeActions` 列表时被放行，因为 plugin-runtime 随后会拒绝
-  列表外的任何动作（ADR 0211）。没有该列表则直接拒绝：一个调用方本就会拒绝的批准并不构成门禁。
+  列表外的任何动作（ADR 0211），普通权限规则仍适用。插件贡献的 MCP 工具没有此类声明，执行回调也会拒绝 Plan/Goal。
 - 受信扩展工具在 Plan 和 Goal 中被扣留。它在 sidecar 进程内运行，因此没有任何 `tools.execute`
   调用到达 host，权限路径无法对它设门；扣留它是唯一可用的边界。扩展在 Agent 模式下不受影响。
 - Agent 模式使用权限卡或选定的自动策略处理

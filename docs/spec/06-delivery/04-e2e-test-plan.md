@@ -3824,8 +3824,8 @@ window; opening a normal panel afterward must still work.
   the server's self-declared annotation. Allow-once covers only that call;
   allow-session suppresses further cards for the same `mcp_<serverId>_<tool>`
   name in that session only, and does not cover other tools of the server.
-  `auto` runs the tool without a card. Plan and Goal deny it even with a
-  session grant.
+  Agent's `auto` runs the tool without a card. Plan and Goal require approval
+  in every permission mode unless that exact tool has a session grant.
 - **Specs linked**: `03-runtime/03-tools-and-permissions.md`,
   `05-security/01-security.md`, D640, ADR `mcp-tool-approval-risk`
 - **Acceptance**: E (tools & permissions) + Security
@@ -7436,19 +7436,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   regardless of the forged mode, grants, or Auto; a plugin tool without
   `planSafeActions` is refused with `PLUGIN_DISABLED_IN_PLAN`; an MCP tool and
   Bash each show a permission card in **every** permission mode, Auto included,
-  and the approved call then runs. The runtime remains one pi Agent and all
-  denials are audited.
+  and the approved call then runs. An exact-tool session grant suppresses repeat
+  prompts without authorizing other tools or sessions. The runtime remains one
+  pi Agent and all denials are audited.
 - **Specs linked**: `03-runtime/02-agent-runtime.md`,
   `03-runtime/03-tools-and-permissions.md`, `03-runtime/05-host-core-rust.md`,
   `03-runtime/06-host-rpc-protocol.md`, `05-security/01-security.md`, ADR 0053,
   ADR 0330
 - **Acceptance**: E (tools and permissions), Security
 - **Milestone**: M6
-- **Status**: Automated (passed 2026-08-04): `test:e2e:plan` plus host-core
-  permission/policy and agent-runtime tool-composition tests. The Bash and MCP
-  card behavior is covered by `permissions::tests` and the two
-  `rpc::tests::{plan,goal}_authorization*` cases; `test:e2e:plan` has not been
-  re-run against the ADR 0330 posture.
+- **Status**: Automated: `test:e2e:plan` covers approval-before-execution and
+  session-grant reuse; host-core authorization tests and agent-runtime MCP
+  selection tests cover the permission and catalog boundaries.
 
 #### E2E-PLAN-WORKSPACE: Missing workspace does not strand a contract turn
 

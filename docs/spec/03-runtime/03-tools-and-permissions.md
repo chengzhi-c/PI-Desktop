@@ -9,12 +9,12 @@
 |---|---|
 | Default mode | Agent |
 | Agent tools | Read / Glob / Grep / Write / Edit / Bash + registered plugin tools + optional Jev classifier |
-| Plan tools | Read / Glob / Grep / BrowserPreview / asktool / SubmitPlan, plus MCP tools and `planSafeActions` plugin tools through a permission card |
-| Goal tools | Read / Glob / Grep / BrowserPreview / asktool / SubmitGoal, plus MCP tools and `planSafeActions` plugin tools through a permission card |
+| Plan tools | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitPlan, plus discoverable MCP tools and plugins with `planSafeActions`; ordinary permissions still apply |
+| Goal tools | Read / Glob / Grep / BrowserPreview / asktool / Bash / SubmitGoal, plus discoverable MCP tools and plugins with `planSafeActions`; ordinary permissions still apply |
 | Plan and Goal hard deny | Write / Edit / TodoWrite / GenerateImages / the delegation tools / the other kind's submit tool. A builtin that is not on the read-only list is denied until it is classified |
-| Plan and Goal Bash | Always takes a permission card; the permission mode does not skip it |
-| Plan and Goal unclassified tools | An MCP tool has no classification signal, so it takes a permission card instead of running unread; a `plugin_` tool needs a non-empty `planSafeActions` list |
-| Plugin `planSafeActions` | Non-empty array of `action` strings; host admits listed tools, plugin-runtime rejects any action outside the list (ADR 0211) |
+| Plan and Goal Bash | Requires approval, including in `auto`, unless the session has an exact-tool grant |
+| Plan and Goal unclassified tools | MCP tools require approval or an exact-tool session grant; `plugin_` tools require non-empty `planSafeActions` |
+| Plugin `planSafeActions` | Non-empty array of `action` strings; runtime hides tools without it, host applies ordinary permissions, plugin-runtime rejects unlisted actions (ADR 0211) |
 | Local permission approval | No automatic deadline; explicit decision or cancellation required |
 | allow-session scope | toolName |
 | Bash style | non-interactive; selected host catalog shell with streamed output |
@@ -571,9 +571,9 @@ Rules:
 - Plan retains the permission-mode selector. `Bash` takes a confirmation in every
   permission mode, so the selector does not change whether Plan may run a command
   — only how the rest of the tools behave. Plan is planning intent, not a strict
-  read-only security profile, and the UI states that tradeoff.
-- `allow-session` grants continue to work under `ask` and stay scoped to the
-  session; under `accept-edits`/`auto` they are simply never needed.
+  read-only security profile.
+- `allow-session` grants stay scoped to the exact tool and session. They also
+  suppress Plan/Goal Bash and MCP prompts under `accept-edits` and `auto`.
 - Scratch-directory writes (D114) stay prompt-free in every mode. Plan and Goal
   do not expose `Write`/`Edit`, so that rule cannot make them available there.
 - UI: Settings → segmented global default; composer shows a per-session chip in
@@ -655,11 +655,11 @@ for the current key-log policy.
 - An MCP tool carries no classification signal — its name says nothing and a
   server's self-declared risk annotation is untrusted — so a contract mode routes
   it to a permission card rather than letting `auto` admit it unread. The tool
-  stays visible to the model so its card is reachable.
+  remains discoverable through ToolSearch or explicit selections.
 - A `plugin_` tool is admitted when it declares a non-empty `planSafeActions`
   list, because the plugin-runtime then rejects any action outside that list
-  (ADR 0211). Without one it is refused: an approval the callee would reject
-  anyway is not a gate.
+  (ADR 0211). Ordinary permissions still apply. Plugin-contributed MCP tools
+  have no such declaration and are also rejected at their execution callback.
 - A trusted-extension tool is withheld in Plan and Goal. It runs in the sidecar
   process, so no `tools.execute` call reaches the host and the permission path
   cannot gate it; withholding it is the only boundary available. Extensions keep
